@@ -325,6 +325,9 @@ public cmd_fn_changemap(client, String:m_args[][]){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
 		if(StrEqual(c_map, s_map)){
 			PrintToChatAll("Changing map to %s", s_map);
+			InsertServerCommand("sm_nextmap \"%s\"", s_map);
+                        InsertServerCommand("nextlevel \"%s\"", s_map);
+			ServerExecute();
 			InsertServerCommand("changelevel \"%s\"", s_map);
 			ServerExecute();
 			return;
