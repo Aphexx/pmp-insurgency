@@ -10,7 +10,7 @@ public Plugin:myinfo ={
 	name = "Public Match Plugin",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Public Match server Plugin",
-	version = "1.0.2",
+	version = "1.1.1",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -36,6 +36,7 @@ new const String:chat_pfx[] = "MP";
 #define TEAM_SECURITY 2
 #define TEAM_INSURGENTS 3
 new bool:g_team_r[4];
+new g_team_player_cnt[4];
 new g_player_cnt;
 
 new String:g_chat_command_prefix[32] = "#.#";
@@ -124,7 +125,8 @@ public OnClientPutInServer(client){
 public OnClientDisconnect(client){
 	//if(!IsFakeClient(client))
 	g_player_cnt--;
-	PrintToServer("Client disconnected");
+	if(!IsClientInGame(client))
+		return;
 
 	new ti = GetClientTeam(client);
 	if(g_player_cnt < 2){
@@ -136,7 +138,7 @@ public OnClientDisconnect(client){
 			return;
 		}
 	}
-	
+
 	if(g_match_status == MATCH_STATUS:LIVE){
 		if(!g_round_end){
 			if(g_paused == PAUSE_STATE:NOT_PAUSED){
@@ -195,7 +197,7 @@ public Action:Command_Say(client, args){
 		if(ti != TEAM_SPECTATORS && strcmp(m_args[0], g_chat_command_prefix) == 0){
 			if(StrEqual(m_args[1], "help"))				cmd_fn_help(client, m_args);
 			else if(StrEqual(m_args[1], "h"))			cmd_fn_help(client, m_args);
-			//else if(StrEqual(m_args[1], "start"))		cmd_fn_start(client, m_args);
+			else if(StrEqual(m_args[1], "start"))		cmd_fn_start(client, m_args);
 			else if(StrEqual(m_args[1], "e"))			cmd_fn_execcfg(client, m_args);
 			else if(StrEqual(m_args[1], "exec"))		cmd_fn_execcfg(client, m_args);
 			else if(StrEqual(m_args[1], "execcfg"))		cmd_fn_execcfg(client, m_args);
@@ -439,7 +441,7 @@ public team_set_notready(ti){
 	new String:team[20];
 	if(ti == TEAM_SECURITY)			team = "Security";
 	else if(ti == TEAM_INSURGENTS)	team = "Insurgents";
-	if(g_match_status == MATCH_STATUS:WAITING){ // Game start
+	if(g_match_status == MATCH_STATUS:WAITING){ // Gaeme start
 		CPrintToChatAll("[%s] {green}%s {default}team {red}NOT {default}ready!", chat_pfx, team);
 	}else if(g_match_status == MATCH_STATUS:LIVE){
 		if(g_paused == PAUSE_STATE:PAUSED){ // Unpause
@@ -530,10 +532,12 @@ public cmd_fn_listcfg(client, String:m_args[][]){
 	for(new i = 0; i < keys.Length; i++){
 		keys.GetKey(i, buf_key, sizeof(buf_key));
 		if(StrEqual(buf_key, "default")) continue;
-		StrCat(buf_concat, sizeof(buf_concat), " \"{green}");
+		if(i == 0)StrCat(buf_concat, sizeof(buf_concat), " {green}");
+		else	StrCat(buf_concat, sizeof(buf_concat), ", {green}");
 		StrCat(buf_concat, sizeof(buf_concat), buf_key);
-		StrCat(buf_concat, sizeof(buf_concat), "{default}\"");
+		StrCat(buf_concat, sizeof(buf_concat), "{default}");
 	}
+	CPrintToChat(client, "[%s] Current config: {green}%s", chat_pfx, g_curcfg);
 	CPrintToChat(client, "[%s] Available configs:%s", chat_pfx, buf_concat);
 }
 
@@ -559,7 +563,7 @@ public print_status(client){
 
 public cmd_fn_help(client, String:m_args[][]){
 	CPrintToChat(client, "[%s] Help info printed into {green}console", chat_pfx);
-	PrintToConsole(client, "Usage: {green}%s COMMAND [arguments]", g_chat_command_prefix);
+	PrintToConsole(client, "Usage: %s COMMAND [arguments]", g_chat_command_prefix);
 	PrintToConsole(client, "Arguments:");
 	PrintToConsole(client, " r                 Marks team as ready/unready. After all teams are ready, executes config, generates server password and starts match");
 	PrintToConsole(client, " stop              Stop match");
@@ -678,11 +682,19 @@ public GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast
 
 public Action:GameEvents_player_team(Handle:event, const String:name[], bool:dontBroadcast){
 	//new client = GetClientOfUserId(GetEventInt(event, "userid"));
-	//new oldteam = GetEventInt(event, "oldteam"); 
-	//new team = GetEventInt(event, "team"); 
+	new oldteam = GetEventInt(event, "oldteam"); 
+	new team = GetEventInt(event, "team");
 
-	//PrintToServer("EVENT:player_team | oldteam='%d', team='%d'", oldteam, team);
-	/* FIXME
+
+	g_team_player_cnt[team]++;
+	if(oldteam){
+		g_team_player_cnt[oldteam]--;
+		if(g_team_player_cnt[oldteam]<1){
+			team_set_notready(oldteam);
+		}
+	}
+	//FIXME
+	/*
 	if(oldteam && team != oldteam){
 		if(g_match_status == MATCH_STATUS:LIVE){
 			if(g_paused == PAUSE_STATE:NOT_PAUSED){
