@@ -1,0 +1,8 @@
+"configs"
+{
+	"configs"
+	{
+		"default"		"NWI_comp.cfg"
+		"NWI"			"NWI_comp.cfg"
+	}
+}
