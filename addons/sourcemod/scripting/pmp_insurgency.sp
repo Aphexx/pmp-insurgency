@@ -10,7 +10,7 @@ public Plugin:myinfo ={
 	name = "Public Match Plugin",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Public Match server Plugin",
-	version = "1.1.1",
+	version = "1.1.2",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -129,6 +129,12 @@ public OnClientDisconnect(client){
 		return;
 
 	new ti = GetClientTeam(client);
+	g_team_player_cnt[ti]--;
+	if(g_team_player_cnt[ti]<1){
+		if(ti != TEAM_SPECTATORS)
+			team_set_notready(ti);
+	}
+
 	if(g_player_cnt < 2){
 		if(g_player_cnt < 1){
 			map_advance(); //Change map/reload server configs after last player disconnected
@@ -690,7 +696,8 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 	if(oldteam){
 		g_team_player_cnt[oldteam]--;
 		if(g_team_player_cnt[oldteam]<1){
-			team_set_notready(oldteam);
+			if(oldteam != TEAM_SPECTATORS)
+				team_set_notready(oldteam);
 		}
 	}
 	//FIXME
