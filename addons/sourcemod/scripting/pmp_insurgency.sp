@@ -197,7 +197,7 @@ public Action:Command_Say(client, args){
 		if(ti != TEAM_SPECTATORS && strcmp(m_args[0], g_chat_command_prefix) == 0){
 			if(StrEqual(m_args[1], "help"))				cmd_fn_help(client, m_args);
 			else if(StrEqual(m_args[1], "h"))			cmd_fn_help(client, m_args);
-			else if(StrEqual(m_args[1], "start"))		cmd_fn_start(client, m_args);
+			//else if(StrEqual(m_args[1], "start"))		cmd_fn_start(client, m_args);
 			else if(StrEqual(m_args[1], "e"))			cmd_fn_execcfg(client, m_args);
 			else if(StrEqual(m_args[1], "exec"))		cmd_fn_execcfg(client, m_args);
 			else if(StrEqual(m_args[1], "execcfg"))		cmd_fn_execcfg(client, m_args);
