@@ -1,3 +1,5 @@
 *
 !addons/sourcemod/scripting/pmp_insurgency.sp
 !addons/sourcemod/plugins/pmp_insurgency.smx
+!addons/sourcemod/scripting/include/matchplugin_ins.inc
+!addons/sourcemod/scripting/matchplugin_ins.sp
