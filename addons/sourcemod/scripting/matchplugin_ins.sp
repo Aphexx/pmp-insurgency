@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.0a",
+	version = "2.0.1a",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -66,19 +66,11 @@ new Handle:g_CVAR_pmp_disable_kill;
 
 
 public OnPluginStart(){
+	PrintToServer("      Initing matchplugin!");
 	InitVars();
 	InitCVARs();
 	InitCMDs();
 	InitHooks();
-
-	/*
-	new zz[MPINS_CMD];
-	g_zarr.GetArray(0, zz[0]);
-	PrintToServer(">>>>>>>>>>>>>>>>>>>>>>>>>>>>> ZZ: %s", zz[MPINS_CMD:cmd_name]);
-	g_zarr.GetArray(1, zz[0]);
-	PrintToServer(">>>>>>>>>>>>>>>>>>>>>>>>>>>>> ZZ2: %s", zz[MPINS_CMD:cmd_name]);
-	*/
-
 
 	AutoExecConfig(true);
 	load_config_file("configs/match_plugin.txt");
@@ -111,67 +103,43 @@ public InitVars(){
 	g_cmds_fn = new StringMap();
 	g_cmds_help = new StringMap();
 
-
-
-	g_cmds.SetString("help",				"cmd_fn_help");
-	g_cmds.SetString("h",				"cmd_fn_help");
-	g_cmds.SetString("start",			"cmd_fn_start");
-	g_cmds.SetString("e",				"cmd_fn_execcfg");
-	g_cmds.SetString("exec",			 	"cmd_fn_execcfg");
-	g_cmds.SetString("execcfg",		 	"cmd_fn_execcfg");
-	g_cmds.SetString("r",				"cmd_fn_ready");
-	g_cmds.SetString("ready",			"cmd_fn_ready");
-	g_cmds.SetString("nr",			 	"cmd_fn_notready");
-	g_cmds.SetString("notready",		"cmd_fn_notready");
-	g_cmds.SetString("stop",			"cmd_fn_stop");
-	g_cmds.SetString("cm",				"cmd_fn_changemap");
-	g_cmds.SetString("map",				"cmd_fn_changemap");
-	g_cmds.SetString("nm",				"cmd_fn_nextmap");
-	g_cmds.SetString("nextmap",			"cmd_fn_nextmap");
-	g_cmds.SetString("p",				"cmd_fn_pause");
-	g_cmds.SetString("pause",			"cmd_fn_pause");
-	g_cmds.SetString("rr",				"cmd_fn_restartround");
-	g_cmds.SetString("restartround",	"cmd_fn_restartround");
-	g_cmds.SetString("rg",				"cmd_fn_restartgame");
-	g_cmds.SetString("restartgame",		"cmd_fn_restartgame");
-	g_cmds.SetString("st",				"cmd_fn_switchteams");
-	g_cmds.SetString("switchteams",		"cmd_fn_switchteams");
-	g_cmds.SetString("sp",				"cmd_fn_showpassword");
-	g_cmds.SetString("showpassword",		"cmd_fn_showpassword");
-	g_cmds.SetString("status",			"cmd_fn_status");
-	g_cmds.SetString("lc",				"cmd_fn_listcfg");
-	g_cmds.SetString("listcfg",			"cmd_fn_listcfg");
-	g_cmds.SetString("listconfig",		"cmd_fn_listcfg");
-	g_cmds.SetString("ks",				"cmd_fn_kickspectators");
-	g_cmds.SetString("kickspectators",	"cmd_fn_kickspectators");
-
-
 	new Handle:ch = GetMyHandle();
-	g_cmds_fn.SetValue("cmd_fn_help", ch);
-	g_cmds_fn.SetValue("cmd_fn_start", ch);
-	g_cmds_fn.SetValue("cmd_fn_execcfg", ch);
-	g_cmds_fn.SetValue("cmd_fn_ready", ch);
-	g_cmds_fn.SetValue("cmd_fn_notready", ch);
-	g_cmds_fn.SetValue("cmd_fn_stop", ch);
-	g_cmds_fn.SetValue("cmd_fn_changemap", ch);
-	g_cmds_fn.SetValue("cmd_fn_nextmap", ch);
-	g_cmds_fn.SetValue("cmd_fn_pause", ch);
-	g_cmds_fn.SetValue("cmd_fn_restartround", ch);
-	g_cmds_fn.SetValue("cmd_fn_restartgame", ch);
-	g_cmds_fn.SetValue("cmd_fn_switchteams", ch);
-	g_cmds_fn.SetValue("cmd_fn_showpassword", ch);
-	g_cmds_fn.SetValue("cmd_fn_status", ch);
-	g_cmds_fn.SetValue("cmd_fn_listcfg", ch);
-	g_cmds_fn.SetValue("cmd_fn_kickspectators", ch);
 
-	//	g_cmds_help.SetValue();
+	MPINS_Native_RegCmd("help",				"cmd_fn_help", ch);
+	MPINS_Native_RegCmd("h",				"cmd_fn_help", ch);
+	MPINS_Native_RegCmd("start",			"cmd_fn_start", ch);
+	MPINS_Native_RegCmd("e",				"cmd_fn_execcfg", ch);
+	MPINS_Native_RegCmd("exec",				"cmd_fn_execcfg", ch);
+	MPINS_Native_RegCmd("execcfg",			"cmd_fn_execcfg", ch);
+	MPINS_Native_RegCmd("r",				"cmd_fn_ready", ch);
+	MPINS_Native_RegCmd("ready",			"cmd_fn_ready", ch);
+	MPINS_Native_RegCmd("nr",				"cmd_fn_notready", ch);
+	MPINS_Native_RegCmd("notready",			"cmd_fn_notready", ch);
+	MPINS_Native_RegCmd("stop",				"cmd_fn_stop", ch);
+	MPINS_Native_RegCmd("cm",				"cmd_fn_changemap", ch);
+	MPINS_Native_RegCmd("map",				"cmd_fn_changemap", ch);
+	MPINS_Native_RegCmd("nm",				"cmd_fn_nextmap", ch);
+	MPINS_Native_RegCmd("nextmap",			"cmd_fn_nextmap", ch);
+	MPINS_Native_RegCmd("p",				"cmd_fn_pause", ch);
+	MPINS_Native_RegCmd("pause",			"cmd_fn_pause", ch);
+	MPINS_Native_RegCmd("rr",				"cmd_fn_restartround", ch);
+	MPINS_Native_RegCmd("restartround",		"cmd_fn_restartround", ch);
+	MPINS_Native_RegCmd("rg",				"cmd_fn_restartgame", ch);
+	MPINS_Native_RegCmd("restartgame",		"cmd_fn_restartgame", ch);
+	MPINS_Native_RegCmd("st",				"cmd_fn_switchteams", ch);
+	MPINS_Native_RegCmd("switchteams",		"cmd_fn_switchteams", ch);
+	MPINS_Native_RegCmd("sp",				"cmd_fn_showpassword", ch);
+	MPINS_Native_RegCmd("showpassword",		"cmd_fn_showpassword", ch);
+	MPINS_Native_RegCmd("status",			"cmd_fn_status", ch);
+	MPINS_Native_RegCmd("lc",				"cmd_fn_listcfg", ch);
+	MPINS_Native_RegCmd("listcfg",			"cmd_fn_listcfg", ch);
+	MPINS_Native_RegCmd("listconfig",		"cmd_fn_listcfg", ch);
+	MPINS_Native_RegCmd("ks",				"cmd_fn_kickspectators", ch);
+	MPINS_Native_RegCmd("kickspectators",	"cmd_fn_kickspectators", ch);
 
-	//new String:arrd[2][64] = {"wolo", "lol"};
-	//g_cmds_help.SetArray("lol", arrd);
-	//arrd = {"hui", "pizda"};
-	//g_cmds_help.SetValue();
+
 	/*
-	g_cmds_help.SetValue("ready", "r				   Marks team as ready/unready. After all teams are ready, executes config, generates server password and starts match");
+	  g_cmds_help.SetValue("ready", "r				   Marks team as ready/unready. After all teams are ready, executes config, generates server password and starts match");
 	g_cmds_help.SetValue("stop",  "		   Stop match");
 	g_cmds_help.SetValue(" e CFGNAME		   Exec config");
 	g_cmds_help.SetValue(" lc				   List available configs");
@@ -404,66 +372,8 @@ public MPINS_OnChatCmd(client, const String:message[]){
 		PrintToChat(client, "[%s] Unknown command\nTry \"%s help\" for command list.", chat_pfx, g_chat_command_prefix);
 	}
     delete largs;
-
-	/*
-	new StringMapSnapshot:keys_cmds = g_cmds.Snapshot();
-	new String:buf_key[64];
-	new String:buf_fn_name[64];
-	for(new ci = 0; ci < keys_cmds.Length; ci++){
-		keys.GetKey(ci, buf_key, sizeof(buf_key));
-		if(StrEqual(buf_key, args[1])){
-			StrCopy(buf_fn_name, 
-					}
-		if(i == 0)StrCat(buf_concat, sizeof(buf_concat), " {green}");
-		else	StrCat(buf_concat, sizeof(buf_concat), ", {green}");
-		StrCat(buf_concat, sizeof(buf_concat), buf_key);
-		StrCat(buf_concat, sizeof(buf_concat), "{default}");
-	}
-	CPrintToChat(client, "[%s] Current config: {green}%s", chat_pfx, g_curcfg);
-	CPrintToChat(client, "[%s] Available configs:%s", chat_pfx, buf_concat);
-	*/
-	/*
-	// FIXME: clean this shit
-	if(StrEqual(args[1], "help"))				cmd_fn_help(client, args);
-	else if(StrEqual(args[1], "h"))				cmd_fn_help(client, args);
-	else if(StrEqual(args[1], "start"))			cmd_fn_start(client, args);
-	else if(StrEqual(args[1], "e"))				cmd_fn_execcfg(client, args);
-	else if(StrEqual(args[1], "exec"))			cmd_fn_execcfg(client, args);
-	else if(StrEqual(args[1], "execcfg"))		cmd_fn_execcfg(client, args);
-	else if(StrEqual(args[1], "r"))				cmd_fn_ready(client, args);
-	else if(StrEqual(args[1], "ready"))			cmd_fn_ready(client, args);
-	else if(StrEqual(args[1], "nr"))			cmd_fn_notready(client, args);
-	else if(StrEqual(args[1], "notready"))		cmd_fn_notready(client, args);
-	else if(StrEqual(args[1], "stop"))			cmd_fn_stop(client, args);
-	else if(StrEqual(args[1], "cm"))			cmd_fn_changemap(client, args);
-	else if(StrEqual(args[1], "map"))			cmd_fn_changemap(client, args);
-	else if(StrEqual(args[1], "nm"))			cmd_fn_nextmap(client, args);
-	else if(StrEqual(args[1], "nextmap"))		cmd_fn_nextmap(client, args);
-	else if(StrEqual(args[1], "p"))				cmd_fn_pause(client, args);
-	else if(StrEqual(args[1], "pause"))			cmd_fn_pause(client, args);
-	else if(StrEqual(args[1], "rr"))			cmd_fn_restartround(client, args);
-	else if(StrEqual(args[1], "restartround"))	cmd_fn_restartround(client, args);
-	else if(StrEqual(args[1], "rg"))			cmd_fn_restartgame(client, args);
-	else if(StrEqual(args[1], "restartgame"))	cmd_fn_restartgame(client, args);
-	else if(StrEqual(args[1], "st"))			cmd_fn_switchteams(client, args);
-	else if(StrEqual(args[1], "switchteams"))	cmd_fn_switchteams(client, args);
-	else if(StrEqual(args[1], "sp"))			cmd_fn_showpassword(client, args);
-	else if(StrEqual(args[1], "showpassword"))	cmd_fn_showpassword(client, args);
-	else if(StrEqual(args[1], "status"))		cmd_fn_status(client, args);
-	else if(StrEqual(args[1], "lc"))			cmd_fn_listcfg(client, args);
-	else if(StrEqual(args[1], "listcfg"))		cmd_fn_listcfg(client, args);
-	else if(StrEqual(args[1], "listconfig"))	cmd_fn_listcfg(client, args);
-	else if(StrEqual(args[1], "ks"))			cmd_fn_kickspectators(client, args);
-	else if(StrEqual(args[1], "kickspectators"))cmd_fn_kickspectators(client, args);
-	else{
-		PrintToChat(client, "[%s] Unknown command\nTry \"%s help\" for command list.", chat_pfx, g_chat_command_prefix);
-	}
-	*/
 	return Plugin_Handled;
 }
-
-
-
 
 
 
@@ -833,8 +743,6 @@ public check_teams_ready(){
 }
 
 
-
-
 public cmd_fn_kickspectators(client, ArrayList:m_args){
 	new maxplayers = GetMaxClients();
 	for (new x = 1; x <= maxplayers ; x++){
@@ -917,6 +825,7 @@ public cmd_fn_help(client, ArrayList:m_args){
 	CPrintToChat(client, "[%s] Help info printed into {green}console", chat_pfx);
 	PrintToConsole(client, "Usage: %s COMMAND [arguments]", g_chat_command_prefix);
 	PrintToConsole(client, "Arguments:");
+	/*
 	PrintToConsole(client, " r				   Marks team as ready/unready. After all teams are ready, executes config, generates server password and starts match");
 	PrintToConsole(client, " stop			   Stop match");
 	PrintToConsole(client, " e CFGNAME		   Exec config");
@@ -929,6 +838,7 @@ public cmd_fn_help(client, ArrayList:m_args){
 	PrintToConsole(client, " st				   Switch teams");
 	PrintToConsole(client, " ks				   Kick spectators");
 	PrintToConsole(client, " sp				   Show password");
+	*/
 }
 
 
@@ -965,15 +875,31 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("MPINS_Native_SetMatchStatus", Native_SetMatchStatus);
 	//CreateNative("MPINS_Native_GetMatchStatus", Native_GetMatchStatus);
 	CreateNative("MPINS_Native_ChatCmd",		Native_ChatCmd);
+	CreateNative("MPINS_Native_RegCmd",			Native_RegCmd);
+
 	FWD_OnMatchStatusChange = CreateGlobalForward("MPINS_OnMatchStatusChange", ET_Hook, Param_Cell, Param_CellByRef);
 	FWD_OnChatCmd = CreateGlobalForward("MPINS_OnChatCmd", ET_Hook, Param_Cell, Param_String);
 	RegPluginLibrary("MPINS");
 	return APLRes_Success;
 }
 
+
 /*
  * Natives
  */
+public Native_RegCmd(Handle:plugin, int numParams){
+	new String:cmd_alias[32];
+	new String:cmd_fn_name[32];
+	new Handle:cmd_plugin;
+	GetNativeString(1, cmd_alias, sizeof(cmd_alias));
+	GetNativeString(2, cmd_fn_name, sizeof(cmd_fn_name));
+    cmd_plugin = GetNativeCell(3);
+
+	g_cmds.SetString(cmd_alias, cmd_fn_name, false);
+	g_cmds_fn.SetValue(cmd_fn_name, cmd_plugin, false);
+}
+
+
 public Native_SetMatchStatus(Handle:plugin, int numParams){
 	new MPINS_MatchStatus:new_status;
 	new_status = GetNativeCell(1);

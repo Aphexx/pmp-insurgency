@@ -20,11 +20,7 @@ enum MPINS_MatchStatus{
 	ENDED
 };
 
-
-native MPINS_Native_GetCmds();
-native MPINS_Native_GetCmdsFn();
-native MPINS_Native_GetCmdsHelp();
-
+native MPINS_Native_RegCmd(String:cmd_alias[], String:cmd_fn_name[], Handle:cmd_plugin);
 
 
 native MPINS_Native_ChatCmd(client, const String:message[]);
