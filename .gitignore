@@ -3,3 +3,4 @@
 !addons/sourcemod/plugins/pmp_insurgency.smx
 !addons/sourcemod/scripting/include/matchplugin_ins.inc
 !addons/sourcemod/scripting/matchplugin_ins.sp
+!addons/sourcemod/scripting/matchplugin_ins-pause.sp
