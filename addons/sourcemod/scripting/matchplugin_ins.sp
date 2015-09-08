@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.2a",
+	version = "2.0.3a",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -29,7 +29,9 @@ new Handle:FWD_OnAllTeamsReady;
 
 
 new Menu:g_voting_menu;
-
+new String:g_voting_name[64];
+new String:g_voting_tittle[64];
+new Float:g_voting_cNextvote[MAXPLAYERS+1];
 
 
 new g_team_player_cnt[TEAM];
@@ -65,6 +67,9 @@ new Handle:g_CVAR_pmp_welcome;
 new Handle:g_CVAR_pmp_disable_kill;
 
 
+new const String:sig_WaitingForMatchStart[] = "match_start";
+new const String:sig_WaitingForMatchStart_descr[] = "match start";
+
 
 
 
@@ -85,8 +90,8 @@ public OnPluginEnd(){
 	RemoveHooks();
 }
 public OnConfigsExecuted(){
-	////new Handle:cv_hostname = FindConVar("hostname");
-	////GetConVarString(cv_hostname, g_hostname, sizeof(g_hostname));
+	//new Handle:cv_hostname = FindConVar("hostname");
+	//GetConVarString(cv_hostname, g_hostname, sizeof(g_hostname));
 
 	//GetConVarString(g_CVAR_pmp_hostname, g_hostname, sizeof(g_hostname));
 
@@ -113,7 +118,7 @@ public OnClientDisconnect(client){
 		if(team != TEAM:SPECTATORS){
 			new String:rdy_for[64];
 			MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
-			if(StrEqual(rdy_for, "match_start")){
+			if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
 				MPINS_Native_SetTeamReadiness(team, false);
 			}
 		}
@@ -181,7 +186,10 @@ public InitVars(){
 	MPINS_Native_RegCmd("kickspectators",	"cmd_fn_kickspectators", ch);
 
 
-	MPINS_Native_RegVote("vote_test", "VoteHandler_test", ch);
+	MPINS_Native_RegVote("vote_match_stop",		"VoteHandler_match_stop", ch);
+	MPINS_Native_RegVote("vote_restart_round",	"VoteHandler_restart_round", ch);
+	MPINS_Native_RegVote("vote_restart_game",	"VoteHandler_restart_game", ch);
+	MPINS_Native_RegVote("vote_switch_teams",	"VoteHandler_switch_teams", ch);
 }
 
 public InitCVARs(){
@@ -275,23 +283,12 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 			if(oldteam != TEAM:SPECTATORS){
 				new String:rdy_for[64];
 				MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
-				if(StrEqual(rdy_for, "match_start")){
+				if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
 					MPINS_Native_SetTeamReadiness(oldteam, false);
 				}
 			}
 		}
 	}
-	//FIXME
-	/*
-	  if(oldteam && team != oldteam){
-	  if(g_match_status == LIVE){
-	  if(g_paused == PAUSE_STATE:NOT_PAUSED){
-	  PrintToChatAll("[%s] Auto pausing game due player team change", chat_pfx);
-	  pause_game();
-	  }
-	  }
-	  }
-	*/
 	return Plugin_Continue;
 }
 
@@ -373,12 +370,12 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 	for(i=0;i<=args_cnt;i++){
 		largs.PushString(args[i]);
 	}
-	new ti = GetClientTeam(client);
+	new TEAM:team = TEAM:GetClientTeam(client);
 	if(args_cnt < 1){
 		cmd_fn_help(client, largs);
 		return Plugin_Handled;
 	}
-	if(ti == TEAM_SPECTATORS){ // FIXME
+	if(team == TEAM:SPECTATORS){ // FIXME
 		return Plugin_Continue;
 	}
 
@@ -392,10 +389,10 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 			Call_PushCell(largs);
 			Call_Finish();
 		}else{
-			PrintToChat(client, "[%s] ERROR", chat_pfx);
+			PrintToChat(client, "[%s] ERROR", CHAT_PFX);
 		}
 	}else{
-		PrintToChat(client, "[%s] Unknown command\nTry \"%s help\" for command list.", chat_pfx, g_chat_command_prefix);
+		PrintToChat(client, "[%s] Unknown command\nTry \"%s help\" for command list.", CHAT_PFX, g_chat_command_prefix);
 	}
 	delete largs;
 	return Plugin_Handled;
@@ -405,8 +402,8 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 
 
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
-	PrintToChatAll("[MP] >>> %d -> %d", old_status, new_status);
-	PrintToServer("[MP] >>> %d -> %d", old_status, new_status);
+	//	PrintToChatAll("[MP] >>> %d -> %d", old_status, new_status);
+	//PrintToServer("[MP] >>> %d -> %d", old_status, new_status);
 	if(g_new_match_status != NONE){
 		PrintToServer("MP::Changing Status to: %d", g_new_match_status);
 		new_status = g_new_match_status;
@@ -422,12 +419,12 @@ public on_match_waiting(){
 	//g_team_r[TEAM_SECURITY] = false;
 	//g_team_r[TEAM_INSURGENTS] = false;
 	//g_paused = PAUSE_STATE:NOT_PAUSED;
-	//CPrintToChatAll("[%s] {green}Not ready", chat_pfx);
+	//CPrintToChatAll("[%s] {green}Not ready", CHAT_PFX);
 	InsertServerCommand("mp_minteamplayers 50");
 	InsertServerCommand("mp_joinwaittime 100000");
 	//InsertServerCommand("unpause");
 	ServerExecute();
-	MPINS_Native_SetWaitForReadiness("match_start", "match start");
+	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
 }
 
 public on_match_starting(){
@@ -455,7 +452,7 @@ public on_match_live(){
 }
 
 public on_match_stoping(){
-	CPrintToChatAll("[%s] {green}%s","Stoping match", chat_pfx);
+	CPrintToChatAll("[%s] {green}%s","Stoping match", CHAT_PFX);
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();
 	MPINS_Native_SetMatchStatus(WAITING);
@@ -567,26 +564,32 @@ public exec_config(String:cfgName[]){
  */
 public cmd_fn_start(client, ArrayList:m_args){
 	if(g_match_status == WAITING){
+		MPINS_Native_UnsetWaitForReadiness(sig_WaitingForMatchStart);
 		MPINS_Native_SetMatchStatus(STARTING);
 		return;
 	}
-	PrintToChat(client, "[%s] Game already started!", chat_pfx);
+	PrintToChat(client, "[%s] Game already started!", CHAT_PFX);
 }
 
 public cmd_fn_stop(client, ArrayList:m_args){
 	if(g_match_status == LIVE){
-		MPINS_Native_SetMatchStatus(STOPING);
+		MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?");
+		//MPINS_Native_SetMatchStatus(STOPING);
 		return;
 	}
-	PrintToChat(client, "[%s] Game not running.", chat_pfx);
+	PrintToChat(client, "[%s] Game not running.", CHAT_PFX);
 }
 
 public cmd_fn_changemap(client, ArrayList:m_args){
-	if(m_args.Length < 3){
-		PrintToChat(client, "[%s] Specify map name", chat_pfx);
+	if(g_match_status != WAITING && g_match_status != ENDED){
+		PrintToChat(client, "[%s] Map can't be changed while match is running", CHAT_PFX);
 		return;
 	}
-	new String:s_map[32];
+	if(m_args.Length < 3){
+		PrintToChat(client, "[%s] Specify map name", CHAT_PFX);
+		return;
+	}
+   	new String:s_map[32];
 	m_args.GetString(2, s_map, sizeof(s_map));
 	new map_cnt = GetArraySize(g_maplist);
 	decl String:c_map[32];
@@ -600,12 +603,12 @@ public cmd_fn_changemap(client, ArrayList:m_args){
 			return;
 		}
 	}
-	PrintToChat(client, "[%s] Map '%s' not found", chat_pfx, s_map);
+	PrintToChat(client, "[%s] Map '%s' not found", CHAT_PFX, s_map);
 }
 
 public cmd_fn_nextmap(client, ArrayList:m_args){
 	if(m_args.Length < 3){
-		PrintToChat(client, "[%s] Specify map name", chat_pfx);
+		PrintToChat(client, "[%s] Specify map name", CHAT_PFX);
 		return;
 	}
 	new String:s_map[32];
@@ -615,33 +618,50 @@ public cmd_fn_nextmap(client, ArrayList:m_args){
 	for (new i = 0; i < map_cnt; i++){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
 		if(StrEqual(c_map, s_map)){
-			PrintToChatAll("[%s] Nextmap changed to %s", chat_pfx,	s_map);
+			PrintToChatAll("[%s] Nextmap changed to %s", CHAT_PFX,	s_map);
 			InsertServerCommand("sm_nextmap \"%s\"", s_map);
 			InsertServerCommand("nextlevel \"%s\"", s_map);
 			ServerExecute();
 			return;
 		}
 	}
-	PrintToChat(client, "[%s] Map '%s' not found", chat_pfx,  s_map);
+	PrintToChat(client, "[%s] Map '%s' not found", CHAT_PFX,  s_map);
 }
 
 public cmd_fn_restartround(client, ArrayList:m_args){
-	PrintToChatAll("[%s] Restarting round...", chat_pfx);
+	if(g_match_status != LIVE && g_match_status != MODULE_HANDLED){
+		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
+		return;
+	}
+	MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?");
+}
+public fn_restartround(){
+	PrintToChatAll("[%s] Restarting round...", CHAT_PFX);
 	InsertServerCommand("mp_restartround 5");
 	ServerExecute();
 }
 
 public cmd_fn_restartgame(client, ArrayList:m_args){
-	PrintToChatAll("[%s] Restarting game...", chat_pfx);
+	if(g_match_status != LIVE && g_match_status != MODULE_HANDLED){
+		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
+		return;
+	}
+	MPINS_Native_VoteStart(client, "vote_restart_game", "Restart game?");
+}
+public fn_restartgame(){
+	PrintToChatAll("[%s] Restarting game...", CHAT_PFX);
 	InsertServerCommand("mp_restartgame 5");
 	ServerExecute();
 }
 
 public cmd_fn_switchteams(client, ArrayList:m_args){
+	MPINS_Native_VoteStart(client, "vote_switch_teams", "Switch teams?");
+}
+public fn_switchteams(){  //FIXME: allow only one team switch while round not running
 	if(g_match_status == LIVE)
-		CPrintToChatAll("[%s] {green}Teams will be switched", chat_pfx);
+		CPrintToChatAll("[%s] {green}Teams will be switched", CHAT_PFX);
 	else
-		CPrintToChatAll("[%s] {green}Teams will be switched on round start", chat_pfx);
+		CPrintToChatAll("[%s] {green}Teams will be switched on round start", CHAT_PFX);
 	InsertServerCommand("mp_switchteams");
 	InsertServerCommand("mp_restartround 1");
 	ServerExecute();
@@ -655,12 +675,6 @@ public cmd_fn_ready(client, ArrayList:m_args){
 		MPINS_Native_SetTeamReadiness(team, false);
 	else
 		MPINS_Native_SetTeamReadiness(team, true);
-	//MPINS_OnTeamReady
-	/*
-	if(g_team_r[ti])team_set_notready(ti);
-	else		team_set_ready(ti);
-	check_teams_ready();
-	*/
 }
 
 public cmd_fn_notready(client, ArrayList:m_args){
@@ -678,7 +692,7 @@ public cmd_fn_kickspectators(client, ArrayList:m_args){
 	for (new x = 1; x <= maxplayers ; x++){
 		if(!IsClientInGame(x))
 			continue;
-		if(GetClientTeam(x) != TEAM_SPECTATORS)
+		if(TEAM:GetClientTeam(x) != TEAM:SPECTATORS)
 			continue;
 		KickClient(x, "Spectators was kicked");
 	}
@@ -689,11 +703,15 @@ public cmd_fn_showpassword(client, ArrayList:m_args){
 	new Handle:cv_password = FindConVar("sv_password");
 	new String:password[100];
 	GetConVarString(cv_password, password, sizeof(password));
-	CPrintToChat(client, "[%s] Password: {green}%s", chat_pfx, password);
+	CPrintToChat(client, "[%s] Password: {green}%s", CHAT_PFX, password);
 }
 
 
 public cmd_fn_execcfg(client, ArrayList:m_args){
+	if(g_match_status != WAITING && g_match_status != ENDED){
+		PrintToChat(client, "[%s] Config can't be changed while match is running", CHAT_PFX);
+		return;
+	}
 	if(m_args.Length < 3){
 		cmd_fn_listcfg(client, m_args);
 		return;
@@ -701,13 +719,13 @@ public cmd_fn_execcfg(client, ArrayList:m_args){
 	new String:s_cfg[32];
 	m_args.GetString(2, s_cfg, sizeof(s_cfg));
 	if(exec_config(s_cfg)){
-		CPrintToChatAll("[%s] Loaded \"{green}%s{default}\" config", chat_pfx, s_cfg);
+		CPrintToChatAll("[%s] Loaded \"{green}%s{default}\" config", CHAT_PFX, s_cfg);
 		if(!StrEqual(s_cfg, g_curcfg)){ //Advance map if loaded config differs
 			strcopy(g_curcfg, sizeof(g_curcfg), s_cfg);
 			map_advance();
 		}
 	}else{
-		CPrintToChat(client, "[%s] Config not found: \"{green}%s{default}\"", chat_pfx, s_cfg);
+		CPrintToChat(client, "[%s] Config not found: \"{green}%s{default}\"", CHAT_PFX, s_cfg);
 		cmd_fn_listcfg(client, m_args);
 	}
 }
@@ -726,8 +744,8 @@ public cmd_fn_listcfg(client, ArrayList:m_args){
 		StrCat(buf_concat, sizeof(buf_concat), buf_key);
 		StrCat(buf_concat, sizeof(buf_concat), "{default}");
 	}
-	CPrintToChat(client, "[%s] Current config: {green}%s", chat_pfx, g_curcfg);
-	CPrintToChat(client, "[%s] Available configs:%s", chat_pfx, buf_concat);
+	CPrintToChat(client, "[%s] Current config: {green}%s", CHAT_PFX, g_curcfg);
+	CPrintToChat(client, "[%s] Available configs:%s", CHAT_PFX, buf_concat);
 }
 
 
@@ -736,14 +754,14 @@ public cmd_fn_status(client, ArrayList:m_args){
 }
 public print_status(client){
 	new String:match_status[32];
-	if(	g_match_status == WAITING)		match_status = "waiting the teams to get ready";
-	else if(g_match_status == STARTING)	match_status = "starting match";
-	else if(g_match_status == LIVE_ON_RESTART) match_status = "LOR";
-	else if(g_match_status == LIVE)		match_status = "LIVE!";
-	else if(g_match_status == STOPING)		match_status = "stoping";
-	else if(g_match_status == ENDED)		match_status = "eneded";
-	CPrintToChat(client, "[%s] Server config: {green}%s", chat_pfx, g_curcfg);
-	CPrintToChat(client, "[%s] Game state: {green}%s", chat_pfx,  match_status);
+	if(	g_match_status == WAITING)				match_status = "waiting the teams to get ready";
+	else if(g_match_status == STARTING)			match_status = "starting match";
+	else if(g_match_status == LIVE_ON_RESTART)	match_status = "LOR";
+	else if(g_match_status == LIVE)				match_status = "LIVE!";
+	else if(g_match_status == STOPING)			match_status = "stoping";
+	else if(g_match_status == ENDED)			match_status = "eneded";
+	CPrintToChat(client, "[%s] Server config: {green}%s", CHAT_PFX, g_curcfg);
+	CPrintToChat(client, "[%s] Game state: {green}%s", CHAT_PFX,  match_status);
 	if(g_is_waiting_rdy){
 		CPrintToChat(client, "Waiting readiness signal for %s", g_rdy_descr);
 	}
@@ -755,14 +773,18 @@ public print_status(client){
 
 
 public cmd_fn_help(client, ArrayList:m_args){
-	CPrintToChat(client, "[%s] Help info printed into {green}console", chat_pfx);
+	CPrintToChat(client, "[%s] Help info printed into {green}console", CHAT_PFX);
 	PrintToConsole(client, "Usage: %s COMMAND [arguments]", g_chat_command_prefix);
 	PrintToConsole(client, "Arguments:");
 
 	Call_StartForward(FWD_OnHelpCalled);
 	Call_PushCell(client);
 	Call_Finish();
-	MPINS_Native_StartVote("vote_test", "Is Aphex awesome?");
+	if(MPINS_Native_VoteStart(client, "vote_test", "Is Aphex awesome?")){
+		PrintToChatAll("Vote Started");
+	}else{
+		PrintToChatAll("Failed to start vote");
+	}
 }
 
 public MPINS_OnHelpCalled(client){
@@ -783,8 +805,8 @@ public MPINS_OnHelpCalled(client){
 public player_welcome(client){
 	if(!GetConVarBool(g_CVAR_pmp_welcome))
 		return;
-	CPrintToChat(client, "[%s] Welcome on match server", chat_pfx);
-	CPrintToChat(client, "[%s] Type {green}%s help {default} for command reference", chat_pfx, g_chat_command_prefix);
+	CPrintToChat(client, "[%s] Welcome on match server", CHAT_PFX);
+	CPrintToChat(client, "[%s] Type {green}%s help {default} for command reference", CHAT_PFX, g_chat_command_prefix);
 	print_status(client);
 }
 
@@ -808,13 +830,15 @@ public player_welcome(client){
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max){
 	CreateNative("MPINS_Native_SetMatchStatus", Native_SetMatchStatus);
-	//CreateNative("MPINS_Native_GetMatchStatus", Native_GetMatchStatus);
+	CreateNative("MPINS_Native_GetMatchStatus", Native_GetMatchStatus);
 	CreateNative("MPINS_Native_ChatCmd",		Native_ChatCmd);
 	CreateNative("MPINS_Native_RegCmd",			Native_RegCmd);
 	CreateNative("MPINS_Native_RegVote",		Native_RegVote);
-	CreateNative("MPINS_Native_StartVote",		Native_StartVote);
+	CreateNative("MPINS_Native_VoteStart",		Native_VoteStart);
+	CreateNative("MPINS_Native_VoteGetParams",  Native_VoteGetParams);
 
 	CreateNative("MPINS_Native_SetWaitForReadiness", Native_SetWaitForReadiness);
+	CreateNative("MPINS_Native_UnsetWaitForReadiness", Native_UnsetWaitForReadiness);
 	CreateNative("MPINS_Native_GetCurrentReadinessFor", Native_GetCurrentReadinessFor);
 
 	CreateNative("MPINS_Native_GetTeamReadiness", Native_GetTeamReadiness);
@@ -827,9 +851,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	FWD_OnChatCmd = CreateGlobalForward("MPINS_OnChatCmd", ET_Event, Param_Cell, Param_String);
 	FWD_OnHelpCalled = CreateGlobalForward("MPINS_OnHelpCalled", ET_Hook, Param_Cell);
 
-	FWD_OnTeamReady = CreateGlobalForward("MPINS_OnTeamReady", ET_Event, Param_Cell, Param_String);
-	FWD_OnTeamUnready = CreateGlobalForward("MPINS_OnTeamUnready", ET_Event, Param_Cell, Param_String);
-	FWD_OnAllTeamsReady = CreateGlobalForward("MPINS_OnAllTeamsReady", ET_Event, Param_String);
+	FWD_OnTeamReady = CreateGlobalForward("MPINS_OnTeamReady", ET_Event, Param_Cell, Param_String, Param_String);
+	FWD_OnTeamUnready = CreateGlobalForward("MPINS_OnTeamUnready", ET_Event, Param_Cell, Param_String, Param_String);
+	FWD_OnAllTeamsReady = CreateGlobalForward("MPINS_OnAllTeamsReady", ET_Event, Param_String, Param_String);
 
 
 	RegPluginLibrary("MPINS");
@@ -871,11 +895,11 @@ public Native_SetMatchStatus(Handle:plugin, int numParams){
 
 	PrintToServer("-----------------Changing Status to: '%d'", new_status);
 	g_new_match_status = new_status;
-	new MPINS_MatchStatus:status;
 	PrintToServer("G_match_status: %d", g_match_status);
 	if(new_status == g_match_status)
 		return false;
-	status = MPINS_Native_GetMatchStatus();
+	new MPINS_MatchStatus:status;
+	MPINS_Native_GetMatchStatus(status);
 	PrintToServer("ActualStatus: %d", status);
 	if(new_status != status)
 		return false;
@@ -907,7 +931,7 @@ public Native_ChatCmd(Handle:plugin, int numParams){
 }
 
 
-public MPINS_MatchStatus:MPINS_Native_GetMatchStatus(){
+public Native_GetMatchStatus(Handle:plugin, int numParams){
 	new MPINS_MatchStatus:old_status = g_match_status;
 	new MPINS_MatchStatus:new_status = g_new_match_status;
 
@@ -918,7 +942,7 @@ public MPINS_MatchStatus:MPINS_Native_GetMatchStatus(){
 	Call_Finish(act);
 	if(act == Plugin_Changed || act == Plugin_Stop)
 		g_match_status = new_status;
-	return g_match_status;
+	SetNativeCellRef(1, g_match_status);
 }
 
 
@@ -929,6 +953,8 @@ public MPINS_MatchStatus:MPINS_Native_GetMatchStatus(){
 public int Handle_VoteMenu(Menu menu, MenuAction action, int param1, int param2){
 	if(action == MenuAction_End){
 		delete menu;
+		g_voting_name[0] = 0;
+		g_voting_tittle[0] = 0;
 		g_voting_menu = null;
 	}
 }
@@ -941,7 +967,6 @@ public void Handler_VoteFinishedGeneric(Menu menu,
 										const int[][] item_info){
 	new String:result[64];
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], result, sizeof(result));
-
 	PrintToChatAll("Winner: %s", result);
 	//PrintToChatAll("Akk: %s", item_info[0][VOTEINFO_ITEM_INDEX]);
 
@@ -959,20 +984,32 @@ public void Handler_VoteFinishedGeneric(Menu menu,
 	*/
 	//Handler_VoteFinishedGeneric(menu, num_votes, num_clients, client_info, num_items, item_info);
 }
+public Native_VoteGetParams(Handle:plugin, int numParams){
+	new name_size =   GetNativeCell(2);
+	new tittle_size = GetNativeCell(4);
 
-public Native_StartVote(Handle:plugin, int numParams){
-	new String:vote_name[32];
-	new String:vote_tittle[32];
-
-	GetNativeString(1, vote_name, sizeof(vote_name));
-	GetNativeString(2, vote_tittle, sizeof(vote_tittle));
+	SetNativeString(1, g_voting_name,   name_size+1,   false);
+	SetNativeString(3, g_voting_tittle, tittle_size+1, false);
+}
 
 
+public Native_VoteStart(Handle:plugin, int numParams){
 	if(IsVoteInProgress()){
-		return;
+		return false;
 	}
+	new client = GetNativeCell(1);
+	new cooldown = 10;
+	new Float:et = GetEngineTime();
+	if(g_voting_cNextvote[client] > et){
+		PrintToChat(client, "[%s] You can vote again in %.f seconds", CHAT_PFX, (g_voting_cNextvote[client]-et));
+		return false;
+	}
+
+	GetNativeString(2, g_voting_name, sizeof(g_voting_name));
+	GetNativeString(3, g_voting_tittle, sizeof(g_voting_tittle));
+
 	new String:buf_fn_name[64];
-	if(g_votes.GetString(vote_name, buf_fn_name, sizeof(buf_fn_name))){
+	if(g_votes.GetString(g_voting_name, buf_fn_name, sizeof(buf_fn_name))){
 		new Handle:buf_fn_plugin;
 		if(g_votes_fn.GetValue(buf_fn_name, buf_fn_plugin)){
 			new VoteHandler:vote_fn;
@@ -980,70 +1017,108 @@ public Native_StartVote(Handle:plugin, int numParams){
 
 			g_voting_menu = new Menu(Handle_VoteMenu);
 			g_voting_menu.VoteResultCallback = vote_fn;
-			g_voting_menu.SetTitle(vote_tittle);
-			g_voting_menu.AddItem("yes", "Yes");
-			g_voting_menu.AddItem("no", "No");
+			g_voting_menu.SetTitle(g_voting_tittle);
+			g_voting_menu.AddItem(VOTE_OPT_YES, "Yes");
+			g_voting_menu.AddItem(VOTE_OPT_NO, "No");
 			g_voting_menu.ExitButton = false;
 			g_voting_menu.DisplayVoteToAll(25);
+			g_voting_cNextvote[client] = et+cooldown;
+			return true;
 		}
 	}
+	return false;
 }
 
 
 /* Vote Handlers */
 
-public void VoteHandler_test(Menu menu,
-							 int num_votes,
-							 int num_clients,
-							 const int[][] client_info,
-							 int num_items,
-							 const int[][] item_info){
-	//PrintToChatAll("AWESOME IT WORKS");
-
-
-	/*
-	  10
-	  8 - yes
-	  1 - no
-
-	  num_votes - 9
-	  num_clients - 9
-	  num_items - 2
-
-	  item_info[0][
-
-	 */
-	if(num_votes < 1){
-		PrintToChatAll("Voting Failed");
-		return;
-	}
+public void VoteHandler_match_stop(Menu menu,
+								   int num_votes,
+								   int num_clients,
+								   const int[][] client_info,
+								   int num_items,
+								   const int[][] item_info){
 	new String:winner[64];
 	new winner_votes;
-
 	new g_vote_ratio = 100;
-
-	/*
-	new client_indexes[num_clients];
-	new client_items[num_clients];
-	for (new i = 0; i < num_clients; i++){
-		client_indexes[i] = client_list[i][VOTEINFO_CLIENT_INDEX];
-		client_items[i] = client_list[i][VOTEINFO_CLIENT_ITEM];
-	}
-	*/
 
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
 	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
-
-
-
 	new winner_ratio = ((winner_votes * 100)/num_votes);
-	PrintToChatAll("Vote: [%d/%d] For '%s' voted %d%%", num_clients, num_votes, winner,	 winner_ratio);
+	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
 	if(winner_ratio >= g_vote_ratio){
-		PrintToChatAll("Vote succeded");
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			MPINS_Native_SetMatchStatus(STOPING);
+		}
 	}else{
-		PrintToChatAll("Vote failed");
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
 	}
-	//Handler_VoteFinishedGeneric(menu, num_votes, num_clients, client_info, num_items, item_info);
+}
+public void VoteHandler_restart_game(Menu menu,
+									 int num_votes,
+									 int num_clients,
+									 const int[][] client_info,
+									 int num_items,
+									 const int[][] item_info){
+	new String:winner[64];
+	new winner_votes;
+	new g_vote_ratio = 100;
+
+	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
+	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
+	new winner_ratio = ((winner_votes * 100)/num_votes);
+	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	if(winner_ratio >= g_vote_ratio){
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			fn_restartgame();
+		}
+	}else{
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
+	}
+}
+public void VoteHandler_restart_round(Menu menu,
+									  int num_votes,
+									  int num_clients,
+									  const int[][] client_info,
+									  int num_items,
+									  const int[][] item_info){
+	new String:winner[64];
+	new winner_votes;
+	new g_vote_ratio = 100;
+
+	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
+	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
+	new winner_ratio = ((winner_votes * 100)/num_votes);
+	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	if(winner_ratio >= g_vote_ratio){
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			fn_restartround();
+		}
+	}else{
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
+	}
+}
+public void VoteHandler_switch_teams(Menu menu,
+									 int num_votes,
+									 int num_clients,
+									 const int[][] client_info,
+									 int num_items,
+									 const int[][] item_info){
+	new String:winner[64];
+	new winner_votes;
+	new g_vote_ratio = 100;
+
+	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
+	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
+	new winner_ratio = ((winner_votes * 100)/num_votes);
+	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	if(winner_ratio >= g_vote_ratio){
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			fn_switchteams();
+		}
+	}else{
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
+	}
 }
 /* ============ */
 
@@ -1059,16 +1134,29 @@ public Native_SetWaitForReadiness(Handle:plugin, int numParams){
 	GetNativeString(2, new_rdy_descr, sizeof(new_rdy_descr));
 
 	if(g_is_waiting_rdy){
-		PrintToServer("[%s] Already waiting for team readines", chat_pfx);
+		PrintToServer("[%s] Already waiting for team readines", CHAT_PFX);
 		return;
 	}
 	g_is_waiting_rdy = true;
 	g_rdy_for = new_rdy_for;
 	g_rdy_descr = new_rdy_descr;
 
-	CPrintToChatAll("[%s] Waiting ready signal");
-	CPrintToChatAll("[%s] Type {green}%s ready {default}when your team will be ready for %s", g_chat_command_prefix, g_rdy_descr);
+	CPrintToChatAll("[%s] Waiting ready signal", CHAT_PFX);
+	CPrintToChatAll("[%s] Type {green}%s ready {default}when your team will be ready for %s", CHAT_PFX,  g_chat_command_prefix, g_rdy_descr);
 }
+public Native_UnsetWaitForReadiness(Handle:plugin, int numParams){
+	new String:rdy_for[64];
+	GetNativeString(1, rdy_for, sizeof(rdy_for));
+
+	if(!StrEqual(g_rdy_for, rdy_for)){
+		return;
+	}
+	g_is_waiting_rdy = false;
+	for(new TEAM:i; i<TEAM;i++){
+		g_teams_rdy[i] = false;
+	}
+}
+
 public Native_GetCurrentReadinessFor(Handle:plugin, int numParams){
 	new str_size = GetNativeCell(2);
 	//new String:rdy_for[str_size];
@@ -1095,11 +1183,13 @@ public Native_SetTeamReadiness(Handle:plugin, int numParams){
 		Call_StartForward(FWD_OnTeamReady);
 		Call_PushCell(team);
 		Call_PushString(g_rdy_for);
+		Call_PushString(g_rdy_descr);
 		Call_Finish();
 	}else{
 		Call_StartForward(FWD_OnTeamUnready);
 		Call_PushCell(team);
 		Call_PushString(g_rdy_for);
+		Call_PushString(g_rdy_descr);
 		Call_Finish();
 	}
 }
@@ -1107,33 +1197,41 @@ public Native_SetTeamReadiness(Handle:plugin, int numParams){
 
 
 
-public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[]){
-	PrintToServer("[%s] Team '%d' ready for '%s'", chat_pfx, team, rdy_for);
-	PrintToChatAll("[%s] Team '%d' ready for '%s'", chat_pfx, team, rdy_for);
+public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[], const String:rdy_descr[]){
+	new String:TeamName[32];
+	if(team == INSURGENTS)		strcopy(TeamName, sizeof(TeamName), "Insurgents");
+	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
+	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
+
+	PrintToServer("[%s] %s team ready for %s", CHAT_PFX, TeamName, rdy_descr);
+	PrintToChatAll("[%s] %s team ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = true;
 	if(g_teams_rdy[team:SECURITY] && g_teams_rdy[team:INSURGENTS]){
 		Call_StartForward(FWD_OnAllTeamsReady);
 		Call_PushString(g_rdy_for);
+		Call_PushString(g_rdy_descr);
 		Call_Finish();
 	}
 	return Plugin_Continue;
 }
 
-public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[]){
-	PrintToServer("[%s] Team '%d' NOT ready for '%s'", chat_pfx, team, rdy_for);
-	PrintToChatAll("[%s] Team '%d' NOT ready for '%s'", chat_pfx, team, rdy_for);
+public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[], const String:rdy_descr[]){
+	new String:TeamName[32];
+	if(team == INSURGENTS)		strcopy(TeamName, sizeof(TeamName), "Insurgents");
+	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
+	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
+
+	PrintToServer("[%s] %s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
+	PrintToChatAll("[%s] %s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = false;
 	return Plugin_Continue;
 }
 
-public Action:MPINS_OnAllTeamsReady(const String:rdy_for[]){
-	PrintToServer("[%s] All teams ready for '%s'", chat_pfx, rdy_for);
-	PrintToChatAll("[%s] All teams ready for '%s'", chat_pfx, rdy_for);
-	g_is_waiting_rdy = false;
-	for(new TEAM:i; i<TEAM;i++){
-		g_teams_rdy[i] = false;
-	}
-	if(StrEqual(rdy_for, "match_start")){
+public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_descr[]){
+	PrintToServer("[%s] All teams ready for %s", CHAT_PFX, rdy_descr);
+	PrintToChatAll("[%s] All teams ready for %s", CHAT_PFX, rdy_descr);
+	MPINS_Native_UnsetWaitForReadiness(rdy_for);
+	if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
 		MPINS_Native_SetMatchStatus(STARTING);
 		return Plugin_Handled;
 	}
@@ -1211,7 +1309,7 @@ public Action:start_stage_7(Handle:timer){
 
 	CPrintToChatAll("{green}%s","=>--!LIVE ON RESTART!--<=");
 	GetConVarString(cv_password, password, sizeof(password));
-	CPrintToChatAll("[%s] Password was set to: {green}%s", chat_pfx, password);
+	CPrintToChatAll("[%s] Password was set to: {green}%s", CHAT_PFX, password);
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();
 	MPINS_Native_SetMatchStatus(LIVE_ON_RESTART);
