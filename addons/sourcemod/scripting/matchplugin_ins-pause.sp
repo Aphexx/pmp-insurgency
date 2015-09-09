@@ -2,10 +2,10 @@
 #include <colors>
 
 public Plugin:myinfo ={
-	name = "Match Plugin Pistol Round",
+	name = "Match Plugin Pause",
 	author = "Aphex <steamfor@gmail.com>",
-	description = "Pistol Round for Insurgency Match Plugin",
-	version = "0.9.2",
+	description = "Pause for Insurgency Match Plugin",
+	version = "0.9.4",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -42,6 +42,10 @@ public OnClientDisconnect(client){
 	if(match_status == LIVE && g_paused == NOT_PAUSED){
 		CPrintToChatAll("[%s] Autopausing game due player disconnecting", CHAT_PFX);
 		CPrintToChatAll("[%s] In order to reconnect to server the game has to be unpaused", CHAT_PFX);
+		new Handle:cv_password = FindConVar("sv_password");
+		new String:password[100];
+		GetConVarString(cv_password, password, sizeof(password));
+		CPrintToChatAll("[%s] Password: {green}%s", CHAT_PFX, password);
 		pause_SetState(PAUSED);
 		MPINS_Native_SetWaitForReadiness(WaitingForUnpause, WaitingForUnpauseDescr);
 		return;
@@ -79,21 +83,15 @@ public pause_SetState(PAUSE_STATE:new_state){
 }
 
 public pause_OnNotPaused(){
-	//PrintToServer("[%s] Not paused", CHAT_PFX);
-	//PrintToChatAll("[%s] Not paused", CHAT_PFX);
 	InsertServerCommand("unpause");
 	ServerExecute();
 }
 
 public pause_OnPaused(){
-	//PrintToServer("[%s] Paused", CHAT_PFX);
-	//PrintToChatAll("[%s] Paused", CHAT_PFX);
 	InsertServerCommand("pause");
 	ServerExecute();
 }
 public pause_OnUnpause(){
-	//PrintToServer("[%s] Unpaused", CHAT_PFX);
-	//PrintToChatAll("[%s] Unpaused", CHAT_PFX);
 	unpause();
 }
 
@@ -150,11 +148,11 @@ public Action:MPINS_OnAllTeamsReady(const String:rdy_for[]){
 
 
 public unpause(){
-	CPrintToChatAll("{green}%s","-----> UNPAUSING <-----");
 	CreateTimer(1.0, unpause_stage_1);
 }
 
 public Action:unpause_stage_1(Handle:timer){
+	CPrintToChatAll("{green}%s","-----> UNPAUSING <-----");
 	CPrintToChatAll("{green}%s","-----> 5 <-----");
 	CreateTimer(1.0, unpause_stage_2);
 }

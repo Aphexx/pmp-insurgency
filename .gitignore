@@ -4,3 +4,4 @@
 !addons/sourcemod/scripting/include/matchplugin_ins.inc
 !addons/sourcemod/scripting/matchplugin_ins.sp
 !addons/sourcemod/scripting/matchplugin_ins-pause.sp
+!addons/sourcemod/scripting/matchplugin_ins-pr.sp

@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.3a",
+	version = "2.0.4a",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -31,13 +31,14 @@ new Handle:FWD_OnAllTeamsReady;
 new Menu:g_voting_menu;
 new String:g_voting_name[64];
 new String:g_voting_tittle[64];
+new String:g_voting_descr[64];
 new Float:g_voting_cNextvote[MAXPLAYERS+1];
 
 
 new g_team_player_cnt[TEAM];
 new g_player_cnt;
 
-new String:g_chat_command_prefix[32] = "#.#";
+new String:g_chat_command_prefix[32] = "##";
 new Handle:g_maplist;
 
 
@@ -56,15 +57,13 @@ new StringMap:g_configs;
 new String:g_curcfg[64] = "default";
 new bool:g_SMC_configs_sec = false;
 
-//new bool:g_round_end = false;
-
 //new String:g_hostname[64];
 
-new Handle:g_CVAR_pmp_cmd_prefix;
-new Handle:g_CVAR_pmp_welcome;
-//new Handle:g_CVAR_pmp_hostname_tail_status;
-//new Handle:g_CVAR_pmp_hostname;
-new Handle:g_CVAR_pmp_disable_kill;
+new ConVar:CVAR_matchplugin_cmd_prefix;
+new ConVar:CVAR_matchplugin_welcome;
+//new Handle:CVAR_matchplugin_hostname_tail_status;
+//new Handle:CVAR_matchplugin_hostname;
+new ConVar:CVAR_matchplugin_disable_kill;
 
 
 new const String:sig_WaitingForMatchStart[] = "match_start";
@@ -74,35 +73,21 @@ new const String:sig_WaitingForMatchStart_descr[] = "match start";
 
 
 public OnPluginStart(){
-	PrintToServer("		 Initing matchplugin!");
-	InitVars();
-	InitCVARs();
-	InitCMDs();
-	InitHooks();
-
-	AutoExecConfig(true);
-	load_config_file("configs/match_plugin.txt");
-	exec_config(g_curcfg);
+	InitPlugin();
 }
 public OnPluginEnd(){
-	RemoveCVARs();
-	RemoveCMDs();
-	RemoveHooks();
+	TeardownPlugin();
 }
 public OnConfigsExecuted(){
 	//new Handle:cv_hostname = FindConVar("hostname");
 	//GetConVarString(cv_hostname, g_hostname, sizeof(g_hostname));
 
-	//GetConVarString(g_CVAR_pmp_hostname, g_hostname, sizeof(g_hostname));
-
+	//GetConVarString(CVAR_matchplugin_hostname, g_hostname, sizeof(g_hostname));
 	new maplist_serial = -1;
 	ReadMapList(g_maplist, maplist_serial, "default", MAPLIST_FLAG_CLEARARRAY);
-
-	//change_status(MATCH_STATUS:WAITING);
 }
 
 public OnMapStart(){
-	//SetMatchStatus
 	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
 }
 
@@ -123,6 +108,10 @@ public OnClientDisconnect(client){
 			}
 		}
 	}
+	if(g_player_cnt < 1){
+		MPINS_Native_SetMatchStatus(WAITING);
+	}
+
 	/* //MOVEME
 	   if(g_player_cnt < 1){
 	   map_advance(); //Change map/reload server configs after last player disconnected
@@ -140,6 +129,20 @@ public OnClientDisconnect(client){
 	}
 	*/
 }
+public InitPlugin(){
+	InitVars();    
+	InitCVARs();
+	InitCMDs();
+	InitHooks();
+
+	load_config_file("configs/match_plugin.txt");
+	exec_config(g_curcfg);
+}
+public TeardownPlugin(){
+	RemoveCVARs();
+	RemoveCMDs();
+	RemoveHooks();
+}
 
 
 
@@ -149,7 +152,6 @@ public InitVars(){
 
 	g_cmds = new StringMap();
 	g_cmds_fn = new StringMap();
-	//g_cmds_help = new StringMap();
 	g_votes = new StringMap();
 	g_votes_fn = new StringMap();
 
@@ -193,17 +195,18 @@ public InitVars(){
 }
 
 public InitCVARs(){
-	g_CVAR_pmp_cmd_prefix =				CreateConVar("sm_pmp_cmd_prefix",			g_chat_command_prefix,	"Chat command prefix");
-	g_CVAR_pmp_welcome =				CreateConVar("sm_pmp_welcome",				"1",					"Enable player welcome message");
-	//g_CVAR_pmp_hostname_tail_status =	CreateConVar("sm_pmp_hostname_tail_status",	"0",					"Enables displaying server status at hostname tail");
-	//g_CVAR_pmp_hostname =				CreateConVar("sm_pmp_hostname",				"Your hostname | ",		"Dynamic hostname");
-	g_CVAR_pmp_disable_kill =			CreateConVar("sm_pmp_disable_kill",			"1",					"Disable 'kill' cmd for players");
-	HookConVarChange(g_CVAR_pmp_cmd_prefix,		OnChange_CVAR_pmp_cmd_prefix);
-	HookConVarChange(g_CVAR_pmp_disable_kill,	OnChange_CVAR_pmp_disable_kill);
+	CVAR_matchplugin_cmd_prefix =				CreateConVar("sm_matchplugin_cmd_prefix",			g_chat_command_prefix,	"Chat command prefix");
+	CVAR_matchplugin_welcome =					CreateConVar("sm_matchplugin_welcome",				"1",					"Enable player welcome message");
+	//CVAR_matchplugin_hostname_tail_status =	CreateConVar("sm_mp_hostname_tail_status",	"0",					"Enables displaying server status at hostname tail");
+	//CVAR_matchplugin_hostname =				CreateConVar("sm_mp_hostname",				"Your hostname | ",		"Dynamic hostname");
+	CVAR_matchplugin_disable_kill =				CreateConVar("sm_matchplugin_disable_kill_cmd",			"1",					"Disable 'kill' cmd for players");
+	AutoExecConfig(true);
+	CVAR_matchplugin_cmd_prefix.AddChangeHook(OnChange_CVAR_matchplugin_cmd_prefix);
+	CVAR_matchplugin_disable_kill.AddChangeHook(OnChange_CVAR_matchplugin_disable_kill);
 }
 public RemoveCVARs(){
-	UnhookConVarChange(g_CVAR_pmp_cmd_prefix, OnChange_CVAR_pmp_cmd_prefix);
-	UnhookConVarChange(g_CVAR_pmp_disable_kill,	OnChange_CVAR_pmp_disable_kill);
+	CVAR_matchplugin_cmd_prefix.RemoveChangeHook(OnChange_CVAR_matchplugin_cmd_prefix);
+	CVAR_matchplugin_disable_kill.RemoveChangeHook(OnChange_CVAR_matchplugin_disable_kill);
 }
 
 public InitCMDs(){
@@ -235,12 +238,12 @@ public RemoveHooks(){
 /*
  * CVARS Hooks
  */
-public OnChange_CVAR_pmp_cmd_prefix(Handle:convar, const String:oldValue[], const String:newValue[]){
+public OnChange_CVAR_matchplugin_cmd_prefix(ConVar:convar, const String:oldValue[], const String:newValue[]){
 	strcopy(g_chat_command_prefix, sizeof(g_chat_command_prefix), newValue);
 	SetConVarString(convar, g_chat_command_prefix);
 }
-public OnChange_CVAR_pmp_disable_kill(Handle:convar, const String:oldValue[], const String:newValue[]){
-	new disable_kill = GetConVarBool(convar);
+public OnChange_CVAR_matchplugin_disable_kill(ConVar:convar, const String:oldValue[], const String:newValue[]){
+	new disable_kill = convar.BoolValue;
 	if(disable_kill)
 		SetCommandFlags("kill", GetCommandFlags("kill") | FCVAR_CHEAT);
 	else
@@ -262,13 +265,12 @@ public Action:GameEvents_GameEnd(Handle:event, const String:name[], bool:dontBro
 	return Plugin_Continue;
 }
 public GameEvents_RoundStart(Handle:event, const String:name[], bool:dontBroadcast){
-	//g_round_end = false;
 	if(g_match_status == MPINS_MatchStatus:LIVE_ON_RESTART){
 		MPINS_Native_SetMatchStatus(MPINS_MatchStatus:LIVE);
 	}
 }
 public GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast){
-	//g_round_end = true;
+
 }
 public Action:GameEvents_player_team(Handle:event, const String:name[], bool:dontBroadcast){
 	//new client = GetClientOfUserId(GetEventInt(event, "userid"));
@@ -402,8 +404,6 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 
 
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
-	//	PrintToChatAll("[MP] >>> %d -> %d", old_status, new_status);
-	//PrintToServer("[MP] >>> %d -> %d", old_status, new_status);
 	if(g_new_match_status != NONE){
 		PrintToServer("MP::Changing Status to: %d", g_new_match_status);
 		new_status = g_new_match_status;
@@ -414,15 +414,11 @@ public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Mat
 }
 
 public on_match_waiting(){
+	InsertServerCommand("exec server.cfg");
+	ServerExecute();
 	exec_config(g_curcfg);
-
-	//g_team_r[TEAM_SECURITY] = false;
-	//g_team_r[TEAM_INSURGENTS] = false;
-	//g_paused = PAUSE_STATE:NOT_PAUSED;
-	//CPrintToChatAll("[%s] {green}Not ready", CHAT_PFX);
 	InsertServerCommand("mp_minteamplayers 50");
 	InsertServerCommand("mp_joinwaittime 100000");
-	//InsertServerCommand("unpause");
 	ServerExecute();
 	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
 }
@@ -573,7 +569,7 @@ public cmd_fn_start(client, ArrayList:m_args){
 
 public cmd_fn_stop(client, ArrayList:m_args){
 	if(g_match_status == LIVE){
-		MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?");
+		MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?", "match stop");
 		//MPINS_Native_SetMatchStatus(STOPING);
 		return;
 	}
@@ -629,11 +625,14 @@ public cmd_fn_nextmap(client, ArrayList:m_args){
 }
 
 public cmd_fn_restartround(client, ArrayList:m_args){
-	if(g_match_status != LIVE && g_match_status != MODULE_HANDLED){
+	if(g_match_status == LIVE ||
+	   g_match_status == MODULE_HANDLED){
+		MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?", "round restart");
+		return;
+	}else{
 		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
 		return;
 	}
-	MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?");
 }
 public fn_restartround(){
 	PrintToChatAll("[%s] Restarting round...", CHAT_PFX);
@@ -646,7 +645,7 @@ public cmd_fn_restartgame(client, ArrayList:m_args){
 		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
 		return;
 	}
-	MPINS_Native_VoteStart(client, "vote_restart_game", "Restart game?");
+	MPINS_Native_VoteStart(client, "vote_restart_game", "Restart game?", "game restart");
 }
 public fn_restartgame(){
 	PrintToChatAll("[%s] Restarting game...", CHAT_PFX);
@@ -655,7 +654,7 @@ public fn_restartgame(){
 }
 
 public cmd_fn_switchteams(client, ArrayList:m_args){
-	MPINS_Native_VoteStart(client, "vote_switch_teams", "Switch teams?");
+	MPINS_Native_VoteStart(client, "vote_switch_teams", "Switch teams?", "switch teams");
 }
 public fn_switchteams(){  //FIXME: allow only one team switch while round not running
 	if(g_match_status == LIVE)
@@ -671,9 +670,7 @@ public cmd_fn_ready(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
 	if(team != TEAM:SECURITY && team != TEAM:INSURGENTS)
 		return;
-	if(MPINS_Native_GetTeamReadiness(team))
-		MPINS_Native_SetTeamReadiness(team, false);
-	else
+	if(!MPINS_Native_GetTeamReadiness(team))
 		MPINS_Native_SetTeamReadiness(team, true);
 }
 
@@ -681,7 +678,7 @@ public cmd_fn_notready(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
 	if(team != TEAM:SECURITY && team != TEAM:INSURGENTS)
 		return;
-	if(g_teams_rdy[team])
+	if(MPINS_Native_GetTeamReadiness(team))
 		MPINS_Native_SetTeamReadiness(team, false);
 }
 
@@ -780,30 +777,26 @@ public cmd_fn_help(client, ArrayList:m_args){
 	Call_StartForward(FWD_OnHelpCalled);
 	Call_PushCell(client);
 	Call_Finish();
-	if(MPINS_Native_VoteStart(client, "vote_test", "Is Aphex awesome?")){
-		PrintToChatAll("Vote Started");
-	}else{
-		PrintToChatAll("Failed to start vote");
-	}
 }
 
 public MPINS_OnHelpCalled(client){
-	PrintToConsole(client, " r				 Marks team as ready/unready. After all teams are ready, executes config, generates server password and starts match");
-	PrintToConsole(client, " stop			 Stop match");
-	PrintToConsole(client, " e CFGNAME		 Exec config");
-	PrintToConsole(client, " lc				 List available configs");
-	PrintToConsole(client, " cm MAPNAME		 Changing map to MAPNAME");
-	PrintToConsole(client, " nm MAPNAME		 Changing nextmap to MAPNAME");
-	PrintToConsole(client, " rg				 Restart game");
-	PrintToConsole(client, " rr				 Round restart");
-	PrintToConsole(client, " st				 Switch teams");
-	PrintToConsole(client, " ks				 Kick spectators");
-	PrintToConsole(client, " sp				 Show password");
+    PrintToConsole(client, " r               Marks team as ready. After all teams are ready, executes config, generates server password and starts match");
+    PrintToConsole(client, " nr              Marks team as unready");
+    PrintToConsole(client, " stop            Stop match");
+    PrintToConsole(client, " e CFGNAME       Exec config");
+    PrintToConsole(client, " lc              List available configs");
+    PrintToConsole(client, " cm MAPNAME      Changing map to MAPNAME");
+    PrintToConsole(client, " nm MAPNAME      Changing nextmap to MAPNAME");
+    PrintToConsole(client, " rg              Restart game");
+    PrintToConsole(client, " rr              Round restart");
+    PrintToConsole(client, " st              Switch teams");
+    PrintToConsole(client, " ks              Kick spectators");
+    PrintToConsole(client, " sp              Show password");
 }
 
 
 public player_welcome(client){
-	if(!GetConVarBool(g_CVAR_pmp_welcome))
+	if(!GetConVarBool(CVAR_matchplugin_welcome))
 		return;
 	CPrintToChat(client, "[%s] Welcome on match server", CHAT_PFX);
 	CPrintToChat(client, "[%s] Type {green}%s help {default} for command reference", CHAT_PFX, g_chat_command_prefix);
@@ -940,8 +933,10 @@ public Native_GetMatchStatus(Handle:plugin, int numParams){
 	Call_PushCell(old_status);
 	Call_PushCellRef(new_status);
 	Call_Finish(act);
-	if(act == Plugin_Changed || act == Plugin_Stop)
+	if(act == Plugin_Changed || act == Plugin_Stop){
+		PrintToServer("::::::::::::::Changing status to: %d", new_status);
 		g_match_status = new_status;
+	}
 	SetNativeCellRef(1, g_match_status);
 }
 
@@ -955,35 +950,11 @@ public int Handle_VoteMenu(Menu menu, MenuAction action, int param1, int param2)
 		delete menu;
 		g_voting_name[0] = 0;
 		g_voting_tittle[0] = 0;
+		g_voting_descr[0] = 0;
 		g_voting_menu = null;
 	}
 }
 
-public void Handler_VoteFinishedGeneric(Menu menu,
-										int num_votes,
-										int num_clients,
-										const int[][] client_info,
-										int num_items,
-										const int[][] item_info){
-	new String:result[64];
-	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], result, sizeof(result));
-	PrintToChatAll("Winner: %s", result);
-	//PrintToChatAll("Akk: %s", item_info[0][VOTEINFO_ITEM_INDEX]);
-
-	/*
-	if(num_items > 1){
-		float winningvotes = float(item_info[0][VOTEINFO_ITEM_VOTES]);
-		float required = num_votes * (FIXME 1 / 100.0);
-		if(winningvotes < required){
-			PrintToChatAll("Voting Failed");
-			return;
-		}else{
-			PrintToChatAll("Vote succeded");
-		}
-		}
-	*/
-	//Handler_VoteFinishedGeneric(menu, num_votes, num_clients, client_info, num_items, item_info);
-}
 public Native_VoteGetParams(Handle:plugin, int numParams){
 	new name_size =   GetNativeCell(2);
 	new tittle_size = GetNativeCell(4);
@@ -1007,6 +978,7 @@ public Native_VoteStart(Handle:plugin, int numParams){
 
 	GetNativeString(2, g_voting_name, sizeof(g_voting_name));
 	GetNativeString(3, g_voting_tittle, sizeof(g_voting_tittle));
+	GetNativeString(4, g_voting_descr, sizeof(g_voting_descr));
 
 	new String:buf_fn_name[64];
 	if(g_votes.GetString(g_voting_name, buf_fn_name, sizeof(buf_fn_name))){
@@ -1015,6 +987,7 @@ public Native_VoteStart(Handle:plugin, int numParams){
 			new VoteHandler:vote_fn;
 			vote_fn = VoteHandler:GetFunctionByName(buf_fn_plugin, buf_fn_name);
 
+			PrintToChatAll("[%s] %N requested %s", CHAT_PFX, client, g_voting_descr);
 			g_voting_menu = new Menu(Handle_VoteMenu);
 			g_voting_menu.VoteResultCallback = vote_fn;
 			g_voting_menu.SetTitle(g_voting_tittle);
@@ -1159,8 +1132,6 @@ public Native_UnsetWaitForReadiness(Handle:plugin, int numParams){
 
 public Native_GetCurrentReadinessFor(Handle:plugin, int numParams){
 	new str_size = GetNativeCell(2);
-	//new String:rdy_for[str_size];
-	//GetNativeString(1, rdy_for, sizeof(rdy_for));
 	SetNativeString(1, g_rdy_for, str_size+1, false);
 }
 

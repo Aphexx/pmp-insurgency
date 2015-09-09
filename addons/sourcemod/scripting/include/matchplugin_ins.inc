@@ -45,7 +45,7 @@ forward Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_de
 
 
 
-native bool:MPINS_Native_VoteStart(client, const String:vote_name[], const String:vote_tittle[]);
+native bool:MPINS_Native_VoteStart(client, const String:vote_name[], const String:vote_tittle[], const String:vote_descr[]);
 native MPINS_Native_VoteGetParams(String:vote_name[], name_size, String:vote_tittle[], tittle_size);
 
 native Action:MPINS_Native_ChatCmd(client, const String:message[], &Action:act);
@@ -55,5 +55,6 @@ forward Action:MPINS_Native_OnChatCmd(client, const String:message[]);
 native bool:MPINS_Native_SetMatchStatus(MPINS_MatchStatus:new_status);
 native MPINS_Native_GetMatchStatus(&MPINS_MatchStatus:status);
 
+forward Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status);
 
 forward MPINS_OnHelpCalled(client);
