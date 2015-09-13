@@ -7,9 +7,10 @@
 #define _matchplugin_ins_included
 
 enum TEAM{
-	SPECTATORS=1,
-	SECURITY=2,
-	INSURGENTS=3
+	NONE,
+	SPECTATORS,
+	SECURITY,
+	INSURGENTS
 };
 
 #define VOTE_OPT_YES "yes"
@@ -58,3 +59,18 @@ native MPINS_Native_GetMatchStatus(&MPINS_MatchStatus:status);
 forward Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status);
 
 forward MPINS_OnHelpCalled(client);
+
+
+
+stock bool:IsValidClient(client, bool:nobots = true){
+	if(client <= 0 || client > MaxClients || !IsClientConnected(client))
+		return false;
+	return IsClientInGame(client);
+}
+
+stock InsGetTeamName(TEAM:team, String:team_n[], size){
+	if(team == INSURGENTS)		strcopy(team_n, size+1, "Insurgents");
+	else if(team == SECURITY)	strcopy(team_n, size+1, "Security");
+	else if(team == SPECTATORS)	strcopy(team_n, size+1, "Spectators");
+	else strcopy(team_n, size+1, "NONE");
+}

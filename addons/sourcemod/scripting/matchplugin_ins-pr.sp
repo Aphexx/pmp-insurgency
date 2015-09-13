@@ -10,7 +10,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Pistol Round",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Pistol Round for Insurgency Match Plugin",
-	version = "0.9.0",
+	version = "0.9.1",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -59,8 +59,8 @@ public PR_HookEvents(){
 	HookEvent("player_spawn", GameEvents_PlayerSpawn);
 }
 public PR_UnhookEvents(){
-	UnhookEvent("round_start", GameEvents_RoundStart, EventHookMode_PostNoCopy);
-	UnhookEvent("round_end", GameEvents_RoundEnd, EventHookMode_PostNoCopy);
+	UnhookEvent("round_start", GameEvents_RoundStart,  EventHookMode_PostNoCopy);
+	UnhookEvent("round_end", GameEvents_RoundEnd,  EventHookMode_PostNoCopy);
 	UnhookEvent("weapon_pickup", GameEvents_WeaponPickup);
 	UnhookEvent("weapon_deploy", GameEvents_WeaponDeploy);
 	UnhookEvent("player_first_spawn", GameEvents_PlayerSpawn);
@@ -204,12 +204,11 @@ public Action:StripWeapons(client){
 		){
 		RemovePlayerItem(client, weapon);
 		AcceptEntityInput(weapon, "kill");
-		new secondary = GetPlayerWeaponSlot(client, 1);
-		if(IsValidEntity(secondary)){
-			SetEntPropEnt(client, Prop_Data, "m_hActiveWeapon", secondary);
+		new knife = GetPlayerWeaponSlot(client, 3);
+		if(IsValidEntity(knife)){
+			SetEntPropEnt(client, Prop_Data, "m_hActiveWeapon", knife);
 			ChangeEdictState(client, FindDataMapOffs(client, "m_hActiveWeapon"));
 		}
-		//Client_SetActiveWeapon(client, secondary);
 		return Plugin_Changed;
 	}
 	return Plugin_Continue;

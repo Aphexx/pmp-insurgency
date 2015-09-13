@@ -12,13 +12,13 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.4a",
+	version = "2.0.5a",
 	url = "http://www.sourcemod.net/"
 };
 
 
 
-new MPINS_MatchStatus:g_match_status = NONE;
+new MPINS_MatchStatus:g_match_status = MPINS_MatchStatus:NONE;
 new MPINS_MatchStatus:g_new_match_status;
 new Handle:FWD_OnMatchStatusChange;
 new Handle:FWD_OnChatCmd;
@@ -37,6 +37,7 @@ new Float:g_voting_cNextvote[MAXPLAYERS+1];
 
 new g_team_player_cnt[TEAM];
 new g_player_cnt;
+new g_team_player_limit[TEAM];
 
 new String:g_chat_command_prefix[32] = "##";
 new Handle:g_maplist;
@@ -72,6 +73,7 @@ new const String:sig_WaitingForMatchStart_descr[] = "match start";
 
 
 
+
 public OnPluginStart(){
 	InitPlugin();
 }
@@ -93,10 +95,9 @@ public OnMapStart(){
 
 public OnClientDisconnect(client){
 	//if(!IsFakeClient(client))
-	g_player_cnt--;
 	if(!IsClientInGame(client))
 		return;
-
+	g_player_cnt--;
 	new TEAM:team = TEAM:GetClientTeam(client);
 	g_team_player_cnt[team]--;
 	if(g_team_player_cnt[team]<1){
@@ -108,15 +109,10 @@ public OnClientDisconnect(client){
 			}
 		}
 	}
-	if(g_player_cnt < 1){
-		MPINS_Native_SetMatchStatus(WAITING);
-	}
+	//if(g_player_cnt < 1){
+	//		MPINS_Native_SetMatchStatus(WAITING);
+	//}
 
-	/* //MOVEME
-	   if(g_player_cnt < 1){
-	   map_advance(); //Change map/reload server configs after last player disconnected
-	   }
-	*/
 	/*
 	if(g_player_cnt < 2){ // Stop match if only one player left
 		if(g_match_status != MPINS_MatchStatus:WAITING &&
@@ -128,9 +124,10 @@ public OnClientDisconnect(client){
 		}
 	}
 	*/
+	PrintToServer("===========g_player_cnt: %d", g_player_cnt);
 }
 public InitPlugin(){
-	InitVars();    
+	InitVars();
 	InitCVARs();
 	InitCMDs();
 	InitHooks();
@@ -222,14 +219,18 @@ public InitHooks(){
 	HookEvent("game_end", GameEvents_GameEnd);
 	HookEvent("round_start", GameEvents_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("round_end", GameEvents_RoundEnd, EventHookMode_PostNoCopy);
-	HookEvent("player_team", GameEvents_player_team);
+	HookEvent("player_team", GameEvents_player_team, EventHookMode_Pre);
+	AddCommandListener(Command_jointeam, "jointeam");
+	AddCommandListener(Command_spectate, "spectate");
 }
 public RemoveHooks(){
 	UnhookEvent("game_start", GameEvents_GameStart);
 	UnhookEvent("game_end", GameEvents_GameEnd);
 	UnhookEvent("round_start", GameEvents_RoundStart, EventHookMode_PostNoCopy);
 	UnhookEvent("round_end", GameEvents_RoundEnd, EventHookMode_PostNoCopy);
-	UnhookEvent("player_team", GameEvents_player_team);
+	UnhookEvent("player_team", GameEvents_player_team, EventHookMode_Pre);
+	RemoveCommandListener(Command_jointeam, "jointeam");
+	RemoveCommandListener(Command_spectate, "spectate");
 }
 
 
@@ -273,9 +274,11 @@ public GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast
 
 }
 public Action:GameEvents_player_team(Handle:event, const String:name[], bool:dontBroadcast){
-	//new client = GetClientOfUserId(GetEventInt(event, "userid"));
-	new TEAM:oldteam = TEAM:GetEventInt(event, "oldteam"); 
+	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	new TEAM:oldteam = TEAM:GetEventInt(event, "oldteam");
 	new TEAM:team = TEAM:GetEventInt(event, "team");
+
+	PrintToServer("[PLAYER_TEAM] %N oldteam=%d, team=%d", client, oldteam, team);
 
 
 	g_team_player_cnt[team]++;
@@ -288,12 +291,53 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 				if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
 					MPINS_Native_SetTeamReadiness(oldteam, false);
 				}
+				MPINS_Native_SetMatchStatus(WAITING);
 			}
 		}
+	}else{
+		if(team == TEAM:SPECTATORS){
+			return Plugin_Continue;
+		}
+		ChangeClientTeam(client, view_as<int>(TEAM:SPECTATORS));
+		return Plugin_Handled;
 	}
 	return Plugin_Continue;
 }
+public Action:Command_jointeam(client, const char[] command, int argc){
+	if(argc < 1)
+		return Plugin_Handled;
+	if(!IsValidClient(client) || IsFakeClient(client))
+		return Plugin_Continue;
 
+	char arg[4];
+	GetCmdArg(1, arg, sizeof(arg));
+	new TEAM:new_team = TEAM:StringToInt(arg);
+	new TEAM:cur_team = TEAM:GetClientTeam(client);
+	PrintToServer("[JOINTEAM] %N cur_team=%d, new_team=%d", client, cur_team, new_team);
+	if(new_team == TEAM:NONE){
+		if(cur_team == TEAM:NONE){
+			ChangeClientTeam(client, view_as<int>(TEAM:SPECTATORS));
+		}
+		return Plugin_Handled;
+	}
+	if(g_match_status == WAITING)
+		return Plugin_Continue;
+   	if(cur_team == SPECTATORS){// || cur_team == TEAM:NONE){
+		if(g_team_player_cnt[new_team] < g_team_player_limit[new_team]){
+			return Plugin_Continue;
+		}
+		return Plugin_Handled;
+	}else{
+		ReplyToCommand(client, "Team switching is restricted while match is running");
+		return Plugin_Handled;
+	}
+}
+public Action:Command_spectate(client, const char[] command, int argc){
+	if(g_match_status == WAITING)
+		return Plugin_Continue;
+	ReplyToCommand(client, "Team switching is restricted while match is running");
+	return Plugin_Handled;
+}
 
 
 
@@ -330,29 +374,11 @@ public Action:Command_Say(client, args){
 	StripQuotes(message);
 	TrimString(message);
 
-	//new String:m_args[6][512];
-	//new ArrayList:m_args = new ArrayList();
-	//new m_args_cnt;
-	//m_args_cnt = ExplodeString(message, " ", m_args, sizeof(m_args), sizeof(m_args[]), true);	 //TODO:replace by BreakString
-
-	//new Action:res = MPINS_Native_OnChatCmd(client, m_args_cnt, m_args);
 	new Action:act;
 	MPINS_Native_ChatCmd(client, message, act);
 	if(act == Plugin_Continue)
 		return Plugin_Continue;
 	return Plugin_Handled;
-	/*
-	if(g_paused == PAUSE_STATE:PAUSED || g_paused == PAUSE_STATE:UNPAUSING){ //TODO: Add team chat support
-		new String:cname[50];
-		GetClientName(client, cname, sizeof(cname));
-		if(ti == TEAM_SECURITY)
-			CPrintToChatAll("[%s] {red}%s: {default}%s", chat_pfx, cname, message);
-		else if(ti == TEAM_INSURGENTS)
-			CPrintToChatAll("[%s] {blue}%s: {default}%s", chat_pfx,	 cname, message);
-		return Plugin_Handled;
-	}
-	*/
-	//return Plugin_Continue;
 }
 
 
@@ -404,10 +430,10 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 
 
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
-	if(g_new_match_status != NONE){
+	if(g_new_match_status != MPINS_MatchStatus:NONE){
 		PrintToServer("MP::Changing Status to: %d", g_new_match_status);
 		new_status = g_new_match_status;
-		g_new_match_status = NONE;
+		g_new_match_status = MPINS_MatchStatus:NONE;
 		return Plugin_Changed;
 	}
 	return Plugin_Continue;
@@ -427,6 +453,9 @@ public on_match_starting(){
 	new String:passwd[5];
 	new passwd_r = GetRandomInt(1000, 9999);
 	IntToString(passwd_r, passwd, sizeof(passwd));
+
+	g_team_player_limit[INSURGENTS] = g_team_player_cnt[INSURGENTS];
+	g_team_player_limit[SECURITY] = g_team_player_cnt[SECURITY];
 
 	InsertServerCommand("mp_minteamplayers 1");
 	InsertServerCommand("mp_joinwaittime 1");
@@ -568,7 +597,7 @@ public cmd_fn_start(client, ArrayList:m_args){
 }
 
 public cmd_fn_stop(client, ArrayList:m_args){
-	if(g_match_status == LIVE){
+	if(g_match_status == LIVE || g_match_status == MODULE_HANDLED){
 		MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?", "match stop");
 		//MPINS_Native_SetMatchStatus(STOPING);
 		return;
@@ -591,7 +620,7 @@ public cmd_fn_changemap(client, ArrayList:m_args){
 	decl String:c_map[32];
 	for (new i = 0; i < map_cnt; i++){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
-		if(StrEqual(c_map, s_map)){
+		if(StrEqual(c_map, s_map, false)){
 			InsertServerCommand("sm_nextmap \"%s\"", s_map);
 			InsertServerCommand("nextlevel \"%s\"", s_map);
 			InsertServerCommand("sm_map \"%s\"", s_map); //FIXME: timeout
@@ -613,7 +642,7 @@ public cmd_fn_nextmap(client, ArrayList:m_args){
 	decl String:c_map[32];
 	for (new i = 0; i < map_cnt; i++){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
-		if(StrEqual(c_map, s_map)){
+		if(StrEqual(c_map, s_map, false)){
 			PrintToChatAll("[%s] Nextmap changed to %s", CHAT_PFX,	s_map);
 			InsertServerCommand("sm_nextmap \"%s\"", s_map);
 			InsertServerCommand("nextlevel \"%s\"", s_map);
@@ -717,7 +746,7 @@ public cmd_fn_execcfg(client, ArrayList:m_args){
 	m_args.GetString(2, s_cfg, sizeof(s_cfg));
 	if(exec_config(s_cfg)){
 		CPrintToChatAll("[%s] Loaded \"{green}%s{default}\" config", CHAT_PFX, s_cfg);
-		if(!StrEqual(s_cfg, g_curcfg)){ //Advance map if loaded config differs
+		if(!StrEqual(s_cfg, g_curcfg, false)){ //Advance map if loaded config differs
 			strcopy(g_curcfg, sizeof(g_curcfg), s_cfg);
 			map_advance();
 		}
@@ -1114,7 +1143,7 @@ public Native_SetWaitForReadiness(Handle:plugin, int numParams){
 	g_rdy_for = new_rdy_for;
 	g_rdy_descr = new_rdy_descr;
 
-	CPrintToChatAll("[%s] Waiting ready signal", CHAT_PFX);
+	//CPrintToChatAll("[%s] Waiting ready signal", CHAT_PFX);
 	CPrintToChatAll("[%s] Type {green}%s ready {default}when your team will be ready for %s", CHAT_PFX,  g_chat_command_prefix, g_rdy_descr);
 }
 public Native_UnsetWaitForReadiness(Handle:plugin, int numParams){
