@@ -92,39 +92,18 @@ public OnConfigsExecuted(){
 public OnMapStart(){
 	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
 }
+public OnClientPutInServer(client){
+	g_player_cnt++;
+}
 
 public OnClientDisconnect(client){
 	//if(!IsFakeClient(client))
 	if(!IsClientInGame(client))
 		return;
-	g_player_cnt--;
 	new TEAM:team = TEAM:GetClientTeam(client);
+	g_player_cnt--;
 	g_team_player_cnt[team]--;
-	if(g_team_player_cnt[team]<1){
-		if(team != TEAM:SPECTATORS){
-			new String:rdy_for[64];
-			MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
-			if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
-				MPINS_Native_SetTeamReadiness(team, false);
-			}
-		}
-	}
-	//if(g_player_cnt < 1){
-	//		MPINS_Native_SetMatchStatus(WAITING);
-	//}
-
-	/*
-	if(g_player_cnt < 2){ // Stop match if only one player left
-		if(g_match_status != MPINS_MatchStatus:WAITING &&
-		   g_match_status != MPINS_MatchStatus:STOPING &&
-		   g_match_status != MPINS_MatchStatus:ENDED
-		   ){
-			MPINS_Native_SetMatchStatus(MPINS_MatchStatus:STOPING);
-			return;
-		}
-	}
-	*/
-	PrintToServer("===========g_player_cnt: %d", g_player_cnt);
+	CreateTimer(1.0, Timer_check_players);
 }
 public InitPlugin(){
 	InitVars();
@@ -279,22 +258,12 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 	new TEAM:team = TEAM:GetEventInt(event, "team");
 
 	PrintToServer("[PLAYER_TEAM] %N oldteam=%d, team=%d", client, oldteam, team);
-
-
 	g_team_player_cnt[team]++;
 	if(oldteam){
 		g_team_player_cnt[oldteam]--;
-		if(g_team_player_cnt[oldteam]<1){
-			if(oldteam != TEAM:SPECTATORS){
-				new String:rdy_for[64];
-				MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
-				if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
-					MPINS_Native_SetTeamReadiness(oldteam, false);
-				}
-				MPINS_Native_SetMatchStatus(WAITING);
-			}
-		}
-	}else{
+	}
+	CreateTimer(1.0, Timer_check_players);
+	if(!oldteam){
 		if(team == TEAM:SPECTATORS){
 			return Plugin_Continue;
 		}
@@ -477,7 +446,7 @@ public on_match_live(){
 }
 
 public on_match_stoping(){
-	CPrintToChatAll("[%s] {green}%s","Stoping match", CHAT_PFX);
+	CPrintToChatAll("[%s] {green}Stopping match...", CHAT_PFX);
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();
 	MPINS_Native_SetMatchStatus(WAITING);
@@ -486,22 +455,6 @@ public on_match_stoping(){
 public on_match_ended(){
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -659,7 +612,7 @@ public cmd_fn_restartround(client, ArrayList:m_args){
 		MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?", "round restart");
 		return;
 	}else{
-		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
+		PrintToChat(client, "[%s] Match is not running", CHAT_PFX);
 		return;
 	}
 }
@@ -827,7 +780,6 @@ public MPINS_OnHelpCalled(client){
 public player_welcome(client){
 	if(!GetConVarBool(CVAR_matchplugin_welcome))
 		return;
-	CPrintToChat(client, "[%s] Welcome on match server", CHAT_PFX);
 	CPrintToChat(client, "[%s] Type {green}%s help {default} for command reference", CHAT_PFX, g_chat_command_prefix);
 	print_status(client);
 }
@@ -915,18 +867,13 @@ public Native_SetMatchStatus(Handle:plugin, int numParams){
 	new MPINS_MatchStatus:new_status;
 	new_status = GetNativeCell(1);
 
-	PrintToServer("-----------------Changing Status to: '%d'", new_status);
 	g_new_match_status = new_status;
-	PrintToServer("G_match_status: %d", g_match_status);
 	if(new_status == g_match_status)
 		return false;
 	new MPINS_MatchStatus:status;
 	MPINS_Native_GetMatchStatus(status);
-	PrintToServer("ActualStatus: %d", status);
 	if(new_status != status)
 		return false;
-
-	PrintToServer("All ok!");
 	g_match_status = status;
 	if(status == WAITING)			on_match_waiting();
 	else if(status == STARTING)		on_match_starting();
@@ -963,7 +910,6 @@ public Native_GetMatchStatus(Handle:plugin, int numParams){
 	Call_PushCellRef(new_status);
 	Call_Finish(act);
 	if(act == Plugin_Changed || act == Plugin_Stop){
-		PrintToServer("::::::::::::::Changing status to: %d", new_status);
 		g_match_status = new_status;
 	}
 	SetNativeCellRef(1, g_match_status);
@@ -1047,7 +993,7 @@ public void VoteHandler_match_stop(Menu menu,
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
 	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
 	new winner_ratio = ((winner_votes * 100)/num_votes);
-	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
 	if(winner_ratio >= g_vote_ratio){
 		if(StrEqual(winner, VOTE_OPT_YES)){
 			MPINS_Native_SetMatchStatus(STOPING);
@@ -1069,7 +1015,7 @@ public void VoteHandler_restart_game(Menu menu,
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
 	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
 	new winner_ratio = ((winner_votes * 100)/num_votes);
-	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
 	if(winner_ratio >= g_vote_ratio){
 		if(StrEqual(winner, VOTE_OPT_YES)){
 			fn_restartgame();
@@ -1091,7 +1037,7 @@ public void VoteHandler_restart_round(Menu menu,
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
 	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
 	new winner_ratio = ((winner_votes * 100)/num_votes);
-	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
 	if(winner_ratio >= g_vote_ratio){
 		if(StrEqual(winner, VOTE_OPT_YES)){
 			fn_restartround();
@@ -1113,7 +1059,7 @@ public void VoteHandler_switch_teams(Menu menu,
 	menu.GetItem(item_info[0][VOTEINFO_ITEM_INDEX], winner, sizeof(winner));
 	winner_votes = item_info[0][VOTEINFO_ITEM_VOTES];
 	new winner_ratio = ((winner_votes * 100)/num_votes);
-	PrintToChatAll("[%s] Vote: For %s voted %d%% of players", CHAT_PFX,  winner,  winner_ratio);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
 	if(winner_ratio >= g_vote_ratio){
 		if(StrEqual(winner, VOTE_OPT_YES)){
 			fn_switchteams();
@@ -1144,7 +1090,7 @@ public Native_SetWaitForReadiness(Handle:plugin, int numParams){
 	g_rdy_descr = new_rdy_descr;
 
 	//CPrintToChatAll("[%s] Waiting ready signal", CHAT_PFX);
-	CPrintToChatAll("[%s] Type {green}%s ready {default}when your team will be ready for %s", CHAT_PFX,  g_chat_command_prefix, g_rdy_descr);
+	CPrintToChatAll("[%s] Type {green}%s ready {default}when all of your team are ready for %s", CHAT_PFX,  g_chat_command_prefix, g_rdy_descr);
 }
 public Native_UnsetWaitForReadiness(Handle:plugin, int numParams){
 	new String:rdy_for[64];
@@ -1228,8 +1174,8 @@ public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[], const Strin
 }
 
 public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_descr[]){
-	PrintToServer("[%s] All teams ready for %s", CHAT_PFX, rdy_descr);
-	PrintToChatAll("[%s] All teams ready for %s", CHAT_PFX, rdy_descr);
+	PrintToServer("[%s] Both teams ready for %s", CHAT_PFX, rdy_descr);
+	PrintToChatAll("[%s] Both teams ready for %s", CHAT_PFX, rdy_descr);
 	MPINS_Native_UnsetWaitForReadiness(rdy_for);
 	if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
 		MPINS_Native_SetMatchStatus(STARTING);
@@ -1240,20 +1186,33 @@ public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_des
 
 
 
+public Action:Timer_check_players(Handle:timer){
+	//PrintToServer("Timer Check Players");
+	//PrintToServer("   g_match_status: %d", g_match_status);
+	//PrintToServer("   g_player_cnt: %d", g_player_cnt);
+	for(new TEAM:team; team<TEAM;team++){
+		if(team == TEAM:NONE || team == TEAM:SPECTATORS)
+			continue;
+		//PrintToServer("   g_team_player_cnt[%d]: %d", team, g_team_player_cnt[team]);
+		if(g_team_player_cnt[team]<1){
+			new String:rdy_for[64];
+			MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
+			if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
+				MPINS_Native_SetTeamReadiness(team, false);
+			}
+			MPINS_Native_SetMatchStatus(WAITING);
+		}
+	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+	if(g_player_cnt < 2){  // Stop the match if only one player left
+		if(g_match_status != MPINS_MatchStatus:WAITING &&
+		   g_match_status != MPINS_MatchStatus:STOPING &&
+		   g_match_status != MPINS_MatchStatus:ENDED
+		   ){
+			MPINS_Native_SetMatchStatus(STOPING);
+		}
+	}
+}
 
 
 
@@ -1274,31 +1233,31 @@ public Action:start_stage_1(Handle:timer){
 
 public Action:start_stage_2(Handle:timer){
 	if(g_match_status != STARTING) return;
-	CPrintToChatAll("{green}%s","-----> 5 <-----");
+	//CPrintToChatAll("{green}%s","-----> 5 <-----");
 	CreateTimer(1.0, start_stage_3);
 }
 
 public Action:start_stage_3(Handle:timer){
 	if(g_match_status != STARTING) return;
-	CPrintToChatAll("{green}%s","----> 4 <----");
+	//CPrintToChatAll("{green}%s","----> 4 <----");
 	CreateTimer(1.0, start_stage_4);
 }
 
 public Action:start_stage_4(Handle:timer){
 	if(g_match_status != STARTING) return;
-	CPrintToChatAll("{green}%s","---> 3 <---");
+	//CPrintToChatAll("{green}%s","---> 3 <---");
 	CreateTimer(1.0, start_stage_5);
 }
 
 public Action:start_stage_5(Handle:timer){
 	if(g_match_status != STARTING) return;
-	CPrintToChatAll("{green}%s","--> 2 <--");
+	//CPrintToChatAll("{green}%s","--> 2 <--");
 	CreateTimer(1.0, start_stage_6);
 }
 
 public Action:start_stage_6(Handle:timer){
 	if(g_match_status != STARTING) return;
-	CPrintToChatAll("{green}%s","-> 1 <-");
+	//CPrintToChatAll("{green}%s","-> 1 <-");
 	CreateTimer(1.0, start_stage_7);
 }
 

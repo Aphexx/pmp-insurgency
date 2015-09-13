@@ -69,7 +69,7 @@ public PR_UnhookEvents(){
 
 public MPINS_OnHelpCalled(client){
 	PrintToConsole(client, " pr 1/0          enable/disable pistol round");
-	PrintToConsole(client, " pr	TEAM         team preference stay|switch|any");
+	PrintToConsole(client, " pr PREFERENCE   team preference stay|switch|any");
 }
 
 public change_status(MPINS_PR_Status:new_status){
@@ -92,7 +92,7 @@ public PR_on_reset(){
 	pr_reset();
 }
 public PR_on_live(){
-	PrintToServer("[%s] LIVE", CHAT_PFX);
+	CPrintToChatAll("[%s] Type {lightgreen}pr switch|stay|any {default} to select team preference", CHAT_PFX);
 	CPrintToChatAll("{lightgreen}PISTOL ROUND\nLIVE");
 	PR_HookEvents();
 }

@@ -73,8 +73,8 @@ public OnClientDisconnect(client){
 	if((match_status == LIVE || match_status == MODULE_HANDLED) && g_paused == NOT_PAUSED){
 		if(!CVAR_matchplugin_disconnect_autopause.BoolValue)
 			return;
-		CPrintToChatAll("[%s] Autopausing game due player disconnecting", CHAT_PFX);
-		CPrintToChatAll("[%s] In order to reconnect to server the game has to be unpaused", CHAT_PFX);
+		CPrintToChatAll("[%s] Game paused automatically due to player drop", CHAT_PFX);
+		CPrintToChatAll("[%s] Please, unpause the game so the players can complete reconnecting", CHAT_PFX);
 		new Handle:cv_password = FindConVar("sv_password");
 		new String:password[100];
 		GetConVarString(cv_password, password, sizeof(password));
@@ -160,9 +160,9 @@ public Action:GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBr
 	MPINS_Native_GetMatchStatus(match_status);
 	if((match_status == LIVE || match_status == MODULE_HANDLED) && g_paused == NOT_PAUSED){
 		if(g_team_pause_req[SECURITY]){
-			CPrintToChatAll("[%s] Game will be paused on next round start by {green}Security {default}team request", CHAT_PFX);
+			CPrintToChatAll("[%s] Game will be paused on next round by {green}Security {default}team request", CHAT_PFX);
 		}else if(g_team_pause_req[INSURGENTS]){
-			CPrintToChatAll("[%s] Game will be paused on next round start by {green}Insurgents {default}team request", CHAT_PFX);
+			CPrintToChatAll("[%s] Game will be paused on next round by {green}Insurgents {default}team request", CHAT_PFX);
 		}
 	}
 	return Plugin_Continue;
@@ -170,8 +170,8 @@ public Action:GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBr
 
 
 public MPINS_OnHelpCalled(client){
-	PrintToConsole(client, " p                Pause game");
-	PrintToConsole(client, " up               Unpause game");
+	PrintToConsole(client, " p               Pause game");
+	PrintToConsole(client, " up              Unpause game");
 }
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
 	if(new_status == MPINS_MatchStatus:LIVE){
@@ -182,7 +182,6 @@ public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Mat
 	return Plugin_Continue;
 }
 public Action:MPINS_OnAllTeamsReady(const String:rdy_for[]){
-	PrintToServer("[PAUSE] OnAllTeamsReady");
 	if(StrEqual(rdy_for, WaitingForUnpause)){
 		unpause();
 		//return Plugin_Handled;
@@ -230,7 +229,7 @@ public cmd_fn_pause_pause(client, ArrayList:m_args){
 		return;
 	if(CVAR_matchplugin_pause_delay_nextround.BoolValue){
 		if(!g_team_pause_req[team]){
-			CPrintToChatAll("[%s] {green}%N {default}was requested game pause. Game will be paused in a next round.", CHAT_PFX, client);
+			CPrintToChatAll("[%s] {green}%N {default}requested a pause for next round", CHAT_PFX, client);
 			g_team_pause_req[team] = true;
 		}
 		return;
@@ -250,15 +249,17 @@ public cmd_fn_pause_unpause(client, ArrayList:m_args){
 		m_args.GetString(2, arg2, sizeof(arg2));
 		if(StrEqual("f", arg2) ||
 		   StrEqual("force", arg2)){
-			CPrintToChatAll("[%s] {green}%N {default}was requested force unpause", CHAT_PFX, client);
+			CPrintToChatAll("[%s] {green}%N {default}requested force unpause", CHAT_PFX, client);
 			unpause();
 		}
 	}
 }
 public cmd_fn_pause_cancel(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
+	decl String:team_n[32];
+	InsGetTeamName(team, team_n, sizeof(team_n));
 	if(g_team_pause_req[team]){
-		CPrintToChatAll("[%s] {green}%N {default}has canceled game pause.", CHAT_PFX, client);
+		CPrintToChatAll("[%s] {green}%s {default}cancelled their pause request", CHAT_PFX, team_n);
  		g_team_pause_req[team] = false;
 	}
 }
@@ -305,17 +306,17 @@ bool:check_pause_request(client, TEAM:team){
 	MPINS_Native_GetMatchStatus(match_status);
 	if(g_paused != PAUSE_STATE:NOT_PAUSED){
 		if(client)
-			PrintToChat(client, "[%s] Game not paused", CHAT_PFX);
+			PrintToChat(client, "[%s] Game is not paused", CHAT_PFX);
 		return false;
 	}
 	if(match_status != LIVE){
 		if(client)
-			PrintToChat(client, "[%s] Match not started yet", CHAT_PFX);
+			PrintToChat(client, "[%s] Match is not started yet", CHAT_PFX);
 		return false;
 	}
 	if(!(g_team_limits[team] < 0 || g_team_limits[team] > 0)){     // Out of pause requests
 		if(client)
-			CPrintToChat(client, "[%s] Your team has {green}%d/%d {default}pause request left",
+			CPrintToChat(client, "[%s] Your team has {green}%d/%d {default}pauses left",
 						 CHAT_PFX, g_team_limits[team], CVAR_matchplugin_pause_team_limit.IntValue);
 		return false;
 	}
@@ -339,15 +340,15 @@ pause_request(client=0, TEAM:team=TEAM:NONE){
 	InsGetTeamName(team, team_n, sizeof(team_n));
 	if(!check_pause_request(client, team))
 		return;
-	if(client)	CPrintToChatAll("[%s] {green}%N {default}was requested game pause", CHAT_PFX, client);
-	else		CPrintToChatAll("[%s] {green}%s {default}team was requested game pause.", CHAT_PFX, team_n);
+	if(client)	CPrintToChatAll("[%s] {green}%N {default} requested a game pause", CHAT_PFX, client);
+	else		CPrintToChatAll("[%s] {green}%s {default} team requested a game pause.", CHAT_PFX, team_n);
 	if(g_team_limits[team] > 0)
-		CPrintToChatAll("[%s] {green}%s {default}team has {green}%d/%d {default}pause requests",
+		CPrintToChatAll("[%s] {green}%s {default} can pause the game {green}%d/%d {default}more times",
 						CHAT_PFX, team_n, g_team_limits[team], CVAR_matchplugin_pause_team_limit.IntValue);
 	if(g_team_limits[team] > 0)
 		g_team_limits[team]--;
 	if(g_time_limits[team] > 0){
-		CPrintToChatAll("[%s] {green}%s {default}team has {green}%d {default}pause seconds left",
+		CPrintToChatAll("[%s] {green}%s {default} can pause the game for {green}%d {default}more seconds",
 						CHAT_PFX, team_n, g_time_limits[team], CVAR_matchplugin_pause_time_limit.IntValue);
 		pause(team);
 		g_unpause_timer = CreateTimer(1.0, Timer_Unpause, 0);
@@ -363,11 +364,11 @@ public Action:Timer_Unpause(Handle:timer, time_passed){
 		if(MPINS_Native_GetTeamReadiness(g_pauser)){ // If pauser team already ready //FIXME: can be abused to momental autounpause
 			if(g_time_limit_force <= 0){
 				g_unpause_timer = INVALID_HANDLE;
-				CPrintToChatAll("[%s] Game will be automaticly unpaused", CHAT_PFX);
+				CPrintToChatAll("[%s] Game will be automatically unpaused", CHAT_PFX);
 				unpause();
 				return;
 			}else{
-				CPrintToChatAll("[%s] Game will be automaticly unpaused in {green}%d {default}seconds",
+				CPrintToChatAll("[%s] Game will be automatically unpaused in {green}%d {default}seconds",
 								CHAT_PFX, g_time_limit_force);
 			}
 			g_time_limit_force -= time_passed;
@@ -387,7 +388,7 @@ public Action:Timer_Unpause(Handle:timer, time_passed){
 			}
 		}else{
 			if(g_time_limits[g_pauser] > 1)
-				CPrintToChatAll("[%s] Game will be automaticly unpaused in {green}%d {default}seconds",
+				CPrintToChatAll("[%s] Game will be automatically unpaused in {green}%d {default}seconds",
 								CHAT_PFX, g_time_limits[g_pauser]);
 			time_left = g_time_limits[g_pauser] - g_timer_prec;
 			if(time_left > 1){
@@ -399,7 +400,7 @@ public Action:Timer_Unpause(Handle:timer, time_passed){
 					g_unpause_timer = CreateTimer(float(time_left), Timer_Unpause, time_left);
 				}else{
 					g_unpause_timer = INVALID_HANDLE;
-					CPrintToChatAll("[%s] Game will be automaticly unpaused", CHAT_PFX);
+					CPrintToChatAll("[%s] You can vote again in %.f seconds", CHAT_PFX);
 					unpause();
 					return;
 				}
