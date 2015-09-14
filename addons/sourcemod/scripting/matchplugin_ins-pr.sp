@@ -40,6 +40,7 @@ public void OnAllPluginsLoaded(){
 	new Handle:ch = GetMyHandle();
 	MPINS_Native_RegCmd("pr",			"cmd_fn_pr_pr", ch);
 	MPINS_Native_RegCmd("pistolround",	"cmd_fn_pr_pr", ch);
+	CVAR_matchplugin_cmd_prefix = FindConVar("sm_matchplugin_cmd_prefix");
 }
 public void OnConfigsExecuted(){
 	g_pistolround_enabled = GetConVarBool(CVAR_pistolround_enabled_default);
@@ -48,7 +49,6 @@ public void OnConfigsExecuted(){
 
 public CreateCVARs(){
 	CVAR_pistolround_enabled_default = CreateConVar("sm_matchplugin_pistolround_enabled_default", "1", "Default pistol round state");
-	CVAR_matchplugin_cmd_prefix = CreateConVar("sm_matchplugin_cmd_prefix", "##");
 	AutoExecConfig(true);
 }
 

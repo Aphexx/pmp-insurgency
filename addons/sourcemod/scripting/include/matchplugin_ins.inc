@@ -61,6 +61,9 @@ forward Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Ma
 forward MPINS_OnHelpCalled(client);
 
 
+native MPINS_Native_SetHostnamePostfix(const String:postfix[]);
+
+
 
 stock bool:IsValidClient(client, bool:nobots = true){
 	if(client <= 0 || client > MaxClients || !IsClientConnected(client))
@@ -73,4 +76,7 @@ stock InsGetTeamName(TEAM:team, String:team_n[], size){
 	else if(team == SECURITY)	strcopy(team_n, size+1, "Security");
 	else if(team == SPECTATORS)	strcopy(team_n, size+1, "Spectators");
 	else strcopy(team_n, size+1, "NONE");
+}
+stock bool:IsGenericAdmin(client){
+	return GetAdminFlag(GetUserAdmin(client), Admin_Generic);
 }

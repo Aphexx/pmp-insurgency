@@ -58,13 +58,15 @@ new StringMap:g_configs;
 new String:g_curcfg[64] = "default";
 new bool:g_SMC_configs_sec = false;
 
-//new String:g_hostname[64];
+new String:g_hostname[128];
+new ConVar:CVAR_hostname;
+new ConVar:CVAR_sv_password;
 
 new ConVar:CVAR_matchplugin_cmd_prefix;
 new ConVar:CVAR_matchplugin_welcome;
-//new Handle:CVAR_matchplugin_hostname_tail_status;
-//new Handle:CVAR_matchplugin_hostname;
-new ConVar:CVAR_matchplugin_disable_kill;
+new ConVar:CVAR_matchplugin_hostname_status;
+new ConVar:CVAR_matchplugin_hostname_showpw;
+new ConVar:CVAR_matchplugin_disable_kill_cmd;
 
 
 new const String:sig_WaitingForMatchStart[] = "match_start";
@@ -76,29 +78,32 @@ new const String:sig_WaitingForMatchStart_descr[] = "match start";
 
 public OnPluginStart(){
 	InitPlugin();
+	//MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
 }
 public OnPluginEnd(){
 	TeardownPlugin();
 }
+public OnMapStart(){
+	CVAR_hostname.GetString(g_hostname, sizeof(g_hostname));
+	SetIdlingHostname(); // Dirtyfix of first-time server start while in hibernation
+}
 public OnConfigsExecuted(){
-	//new Handle:cv_hostname = FindConVar("hostname");
-	//GetConVarString(cv_hostname, g_hostname, sizeof(g_hostname));
-
-	//GetConVarString(CVAR_matchplugin_hostname, g_hostname, sizeof(g_hostname));
 	new maplist_serial = -1;
 	ReadMapList(g_maplist, maplist_serial, "default", MAPLIST_FLAG_CLEARARRAY);
+	//MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
+	SetIdlingHostname();
+	if(CVAR_matchplugin_disable_kill_cmd.BoolValue)
+		disable_kill_cmd();
 }
 
-public OnMapStart(){
-	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
-}
+
 public OnClientPutInServer(client){
 	g_player_cnt++;
+	player_welcome(client);
 }
 
 public OnClientDisconnect(client){
 	//if(!IsFakeClient(client))
-	PrintToServer("G_PLAYER_CNT::: %d", g_player_cnt);
 	if(!IsClientInGame(client))
 		return;
 	new TEAM:team = TEAM:GetClientTeam(client);
@@ -110,8 +115,8 @@ public OnClientDisconnect(client){
 	CreateTimer(1.0, Timer_check_players);
 }
 public InitPlugin(){
-	InitVars();
 	InitCVARs();
+	InitVars();
 	InitCMDs();
 	InitHooks();
 
@@ -172,21 +177,25 @@ public InitVars(){
 	MPINS_Native_RegVote("vote_restart_round",	"VoteHandler_restart_round", ch);
 	MPINS_Native_RegVote("vote_restart_game",	"VoteHandler_restart_game", ch);
 	MPINS_Native_RegVote("vote_switch_teams",	"VoteHandler_switch_teams", ch);
+	CVAR_hostname.GetString(g_hostname, sizeof(g_hostname));
 }
 
 public InitCVARs(){
 	CVAR_matchplugin_cmd_prefix =				CreateConVar("sm_matchplugin_cmd_prefix",			g_chat_command_prefix,	"Chat command prefix");
 	CVAR_matchplugin_welcome =					CreateConVar("sm_matchplugin_welcome",				"1",					"Enable player welcome message");
-	//CVAR_matchplugin_hostname_tail_status =	CreateConVar("sm_mp_hostname_tail_status",	"0",					"Enables displaying server status at hostname tail");
-	//CVAR_matchplugin_hostname =				CreateConVar("sm_mp_hostname",				"Your hostname | ",		"Dynamic hostname");
-	CVAR_matchplugin_disable_kill =				CreateConVar("sm_matchplugin_disable_kill_cmd",			"1",					"Disable 'kill' cmd for players");
+	CVAR_matchplugin_hostname_status =			CreateConVar("sm_matchplugin_hostname_status",		"1",					"Enables displaying server status at hostname tail");
+	CVAR_matchplugin_hostname_showpw = 			CreateConVar("sm_matchplugin_hostname_showpw",		"1",					"Enables displaying default server password while match not running");
+	CVAR_matchplugin_disable_kill_cmd =			CreateConVar("sm_matchplugin_disable_kill_cmd",		"1",					"Disable 'kill' cmd for players");
+	CVAR_hostname = FindConVar("hostname");
+	CVAR_sv_password = FindConVar("sv_password");
+
 	AutoExecConfig(true);
 	CVAR_matchplugin_cmd_prefix.AddChangeHook(OnChange_CVAR_matchplugin_cmd_prefix);
-	CVAR_matchplugin_disable_kill.AddChangeHook(OnChange_CVAR_matchplugin_disable_kill);
+	CVAR_matchplugin_disable_kill_cmd.AddChangeHook(OnChange_CVAR_matchplugin_disable_kill_cmd);
 }
 public RemoveCVARs(){
 	CVAR_matchplugin_cmd_prefix.RemoveChangeHook(OnChange_CVAR_matchplugin_cmd_prefix);
-	CVAR_matchplugin_disable_kill.RemoveChangeHook(OnChange_CVAR_matchplugin_disable_kill);
+	CVAR_matchplugin_disable_kill_cmd.RemoveChangeHook(OnChange_CVAR_matchplugin_disable_kill_cmd);
 }
 
 public InitCMDs(){
@@ -226,12 +235,18 @@ public OnChange_CVAR_matchplugin_cmd_prefix(ConVar:convar, const String:oldValue
 	strcopy(g_chat_command_prefix, sizeof(g_chat_command_prefix), newValue);
 	SetConVarString(convar, g_chat_command_prefix);
 }
-public OnChange_CVAR_matchplugin_disable_kill(ConVar:convar, const String:oldValue[], const String:newValue[]){
+public OnChange_CVAR_matchplugin_disable_kill_cmd(ConVar:convar, const String:oldValue[], const String:newValue[]){
 	new disable_kill = convar.BoolValue;
 	if(disable_kill)
-		SetCommandFlags("kill", GetCommandFlags("kill") | FCVAR_CHEAT);
+		disable_kill_cmd();
 	else
-		SetCommandFlags("kill", GetCommandFlags("kill") & ~(FCVAR_CHEAT));
+		enable_kill_cmd();
+}
+disable_kill_cmd(){
+	SetCommandFlags("kill", GetCommandFlags("kill") | FCVAR_CHEAT);
+}
+enable_kill_cmd(){
+	SetCommandFlags("kill", GetCommandFlags("kill") & ~(FCVAR_CHEAT));
 }
 
 
@@ -286,8 +301,7 @@ public Action:Command_jointeam(client, const char[] command, int argc){
 	GetCmdArg(1, arg, sizeof(arg));
 	new TEAM:new_team = TEAM:StringToInt(arg);
 	new TEAM:cur_team = TEAM:GetClientTeam(client);
-	PrintToServer("[JOINTEAM] %N cur_team=%d, new_team=%d", client, cur_team, new_team);
-	if(new_team == TEAM:NONE){
+   	if(new_team == TEAM:NONE){
 		if(cur_team == TEAM:NONE){
 			ChangeClientTeam(client, view_as<int>(TEAM:SPECTATORS));
 		}
@@ -412,10 +426,12 @@ public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Mat
 }
 
 public on_match_waiting(){
+	PrintToServer("\n\n\n\n=============s================================================\n             ON MATCH WAITING\n\n\n");
 	InsertServerCommand("exec server.cfg");
 	ServerExecute();
 	exec_config(g_curcfg);
 	warmup_start();
+	SetIdlingHostname();
 	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
 }
 
@@ -428,10 +444,8 @@ public on_match_starting(){
 	g_team_player_limit[SECURITY] = g_team_player_cnt[SECURITY];
 
 	warmup_end();
-	InsertServerCommand("sv_password \"%s\"", passwd);
-	ServerExecute();
-
-	//change_concat_to_hostname("Match in progress");
+	CVAR_sv_password.SetString(passwd);
+	MPINS_Native_SetHostnamePostfix("LIVE");
 	CreateTimer(1.0, start_stage_1);
 }
 
@@ -536,6 +550,7 @@ public exec_config(String:cfgName[]){
 	new String:cfgFile[127];
 
 	if(g_configs.GetString(cfgName, cfgFile, sizeof(cfgFile))){
+		PrintToServer("\n\n================================================================\n\nEXEC: %s\n\n\n", cfgFile);
 		InsertServerCommand("exec %s", cfgFile);
 		ServerExecute();
 		return true;
@@ -553,6 +568,10 @@ public exec_config(String:cfgName[]){
  * FN
  */
 public cmd_fn_start(client, ArrayList:m_args){
+	if(!IsGenericAdmin(client)){
+		PrintToChat(client, "[%s] You do not have access to this command", CHAT_PFX);
+		return;
+	}
 	if(g_match_status != WAITING){
 		PrintToChat(client, "[%s] Game already started!", CHAT_PFX);
 		return;
@@ -693,9 +712,8 @@ public cmd_fn_kickspectators(client, ArrayList:m_args){
 
 
 public cmd_fn_showpassword(client, ArrayList:m_args){
-	new Handle:cv_password = FindConVar("sv_password");
 	new String:password[100];
-	GetConVarString(cv_password, password, sizeof(password));
+	CVAR_sv_password.GetString(password, sizeof(password));
 	CPrintToChat(client, "[%s] Password: {green}%s", CHAT_PFX, password);
 }
 
@@ -831,6 +849,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 	CreateNative("MPINS_Native_GetTeamReadiness", Native_GetTeamReadiness);
 	CreateNative("MPINS_Native_SetTeamReadiness", Native_SetTeamReadiness);
+
+	CreateNative("MPINS_Native_SetHostnamePostfix", Native_SetHostnamePostfix);
 
 	FWD_OnMatchStatusChange = CreateGlobalForward("MPINS_OnMatchStatusChange", ET_Hook, Param_Cell, Param_CellByRef);
 	FWD_OnChatCmd = CreateGlobalForward("MPINS_OnChatCmd", ET_Event, Param_Cell, Param_String);
@@ -1152,6 +1172,28 @@ public Native_SetTeamReadiness(Handle:plugin, int numParams){
 	}
 }
 
+public Native_SetHostnamePostfix(Handle:plugin, int numParams){
+	if(!CVAR_matchplugin_hostname_status)
+		return;
+	decl String:postfix[64];
+	decl String:buf_h[128];
+	GetNativeString(1, postfix, sizeof(postfix));
+	strcopy(buf_h, sizeof(buf_h), g_hostname);
+	StrCat(buf_h, sizeof(buf_h), postfix);
+	CVAR_hostname.SetString(buf_h, true);
+}
+
+SetIdlingHostname(){
+	if(!CVAR_matchplugin_hostname_showpw.BoolValue)
+		return;
+	decl String:password[100];
+	CVAR_sv_password.GetString(password, sizeof(password));
+	if(StrEqual(password, ""))
+		return;
+	decl String:buf_h[128];
+	Format(buf_h, sizeof(buf_h), "pw: %s", password);
+	MPINS_Native_SetHostnamePostfix(buf_h);
+}
 
 
 
@@ -1295,11 +1337,10 @@ public Action:start_stage_6(Handle:timer){
 
 public Action:start_stage_7(Handle:timer){
 	if(g_match_status != STARTING) return;
-	new Handle:cv_password = FindConVar("sv_password");
 	new String:password[100];
+	CVAR_sv_password.GetString(password, sizeof(password));
 
 	CPrintToChatAll("{green}%s","=>--!LIVE ON RESTART!--<=");
-	GetConVarString(cv_password, password, sizeof(password));
 	CPrintToChatAll("[%s] Password was set to: {green}%s", CHAT_PFX, password);
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();

@@ -31,7 +31,6 @@ new g_time_limits[TEAM];
 new g_time_limit_force;
 new bool:g_team_pause_req[TEAM];
 new TEAM:g_pauser;
-new Handle:g_unpause_timer;
 
 
 
@@ -249,6 +248,10 @@ public cmd_fn_pause_unpause(client, ArrayList:m_args){
 		m_args.GetString(2, arg2, sizeof(arg2));
 		if(StrEqual("f", arg2) ||
 		   StrEqual("force", arg2)){
+			if(!IsGenericAdmin(client)){
+				PrintToChat(client, "[%s] You do not have access to this command", CHAT_PFX);
+				return;
+			}
 			CPrintToChatAll("[%s] {green}%N {default}requested force unpause", CHAT_PFX, client);
 			unpause();
 		}
@@ -276,17 +279,11 @@ public pause(TEAM:team){
 }
 
 public unpause(){
-	// FIXME: handlers close trouble after server goes hibernation 
-	//if(g_unpause_timer)
-	//	CloseHandle(g_unpause_timer);
 	g_pauser = TEAM:NONE;
 	MPINS_Native_UnsetWaitForReadiness(WaitingForUnpause);
 	pause_SetState(UNPAUSING);
 }
 public pause_reset(){
-	// FIXME: handlers close trouble after server goes hibernation
-	//if(g_unpause_timer)
-	//	CloseHandle(g_unpause_timer);
 	g_pauser = TEAM:NONE;
 	g_time_limit_force = g_timer_force_unpause;
 	for(new TEAM:t; t<TEAM;t++){
@@ -353,18 +350,17 @@ pause_request(client=0, TEAM:team=TEAM:NONE){
 		CPrintToChatAll("[%s] {green}%s {default} can pause the game for {green}%d {default}more seconds",
 						CHAT_PFX, team_n, g_time_limits[team], CVAR_matchplugin_pause_time_limit.IntValue);
 		pause(team);
-		g_unpause_timer = CreateTimer(1.0, Timer_Unpause, 0);
+		CreateTimer(1.0, Timer_Unpause, 0);
 		return;
 	}
 	pause(team);
 }
 
 
-public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler close/server hibernation problem
+public Action:Timer_Unpause(Handle:timer, time_passed){
 	if(g_paused == PAUSE_STATE:PAUSED){
 		if(MPINS_Native_GetTeamReadiness(g_pauser)){ // If pauser team already ready //FIXME: can be abused to momental autounpause
 			if(g_time_limit_force <= 0){
-				g_unpause_timer = INVALID_HANDLE;
 				CPrintToChatAll("[%s] Game will be automatically unpaused", CHAT_PFX);
 				unpause();
 				return;
@@ -373,7 +369,7 @@ public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler c
 								CHAT_PFX, g_time_limit_force);
 			}
 			g_time_limit_force -= time_passed;
-			g_unpause_timer = CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
+			CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
 			return;
 		}
 		new time_left;
@@ -381,10 +377,10 @@ public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler c
 		if(g_time_limits[g_pauser] > g_timer_min){
 			time_left = (g_time_limits[g_pauser] - g_timer_min);
 			if(time_left < g_timer_prec){
-				g_unpause_timer = CreateTimer(float(time_left), Timer_Unpause, time_left);
+				CreateTimer(float(time_left), Timer_Unpause, time_left);
 				return;
 			}else{
-				g_unpause_timer = CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
+				CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
 				return;
 			}
 		}else{
@@ -393,14 +389,13 @@ public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler c
 								CHAT_PFX, g_time_limits[g_pauser]);
 			time_left = g_time_limits[g_pauser] - g_timer_prec;
 			if(time_left > 1){
-				g_unpause_timer = CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
+				CreateTimer(float(g_timer_prec), Timer_Unpause, g_timer_prec);
 				return;
 			}else{
 				time_left = g_time_limits[g_pauser];
 				if(time_left > 1){
-					g_unpause_timer = CreateTimer(float(time_left), Timer_Unpause, time_left);
+					CreateTimer(float(time_left), Timer_Unpause, time_left);
 				}else{
-					g_unpause_timer = INVALID_HANDLE;
 					CPrintToChatAll("[%s] Game will be automaticly unpaused", CHAT_PFX);
 					unpause();
 					return;
@@ -408,7 +403,7 @@ public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler c
 			}
 		}
 	}
-	g_unpause_timer = INVALID_HANDLE;
+
 }
 
 
