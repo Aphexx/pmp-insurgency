@@ -29,7 +29,8 @@ new MPINS_PR_TeamWant:g_pr_teams[TEAM];
 new TEAM:g_winner;
 
 
-new Handle:CVAR_pistolround_enabled_default;
+new ConVar:CVAR_pistolround_enabled_default;
+new ConVar:CVAR_matchplugin_cmd_prefix;
 new bool:g_pistolround_enabled;
 
 public void OnPluginStart(){
@@ -47,6 +48,7 @@ public void OnConfigsExecuted(){
 
 public CreateCVARs(){
 	CVAR_pistolround_enabled_default = CreateConVar("sm_matchplugin_pistolround_enabled_default", "1", "Default pistol round state");
+	CVAR_matchplugin_cmd_prefix = CreateConVar("sm_matchplugin_cmd_prefix", "##");
 	AutoExecConfig(true);
 }
 
@@ -92,7 +94,9 @@ public PR_on_reset(){
 	pr_reset();
 }
 public PR_on_live(){
-	CPrintToChatAll("[%s] Type {lightgreen}pr switch|stay|any {default} to select team preference", CHAT_PFX);
+	decl String:cmd_prefix[10];
+	CVAR_matchplugin_cmd_prefix.GetString(cmd_prefix, sizeof(cmd_prefix));
+	CPrintToChatAll("[%s] Type {lightgreen}%s pr switch|stay|any {default} to select team preference", CHAT_PFX, cmd_prefix);
 	CPrintToChatAll("{lightgreen}PISTOL ROUND\nLIVE");
 	PR_HookEvents();
 }
@@ -108,9 +112,10 @@ public PR_on_ended(){
 		InsertServerCommand("mp_switchteams");
 	}
 	pr_reset();
-	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:LIVE_ON_RESTART);
+	ServerExecute();
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();
+	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:LIVE_ON_RESTART);
 }
 
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
@@ -130,12 +135,6 @@ public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Mat
 	}
 	return Plugin_Continue;
 }
-
-
-
-
-
-
 
 
 public GameEvents_RoundStart(Handle:event, const String:name[], bool:dontBroadcast){
@@ -204,17 +203,20 @@ public Action:StripWeapons(client){
 		){
 		RemovePlayerItem(client, weapon);
 		AcceptEntityInput(weapon, "kill");
-		new knife = GetPlayerWeaponSlot(client, 3);
-		if(IsValidEntity(knife)){
-			SetEntPropEnt(client, Prop_Data, "m_hActiveWeapon", knife);
+		new slot3 = GetPlayerWeaponSlot(client, 3);
+		if(IsValidEntity(slot3)){
+			SetEntPropEnt(client, Prop_Data, "m_hActiveWeapon", slot3);
+			ChangeEdictState(client, FindDataMapOffs(client, "m_hActiveWeapon"));
+		}
+		new slot2 = GetPlayerWeaponSlot(client, 2);
+		if(IsValidEntity(slot2)){
+			SetEntPropEnt(client, Prop_Data, "m_hActiveWeapon", slot2);
 			ChangeEdictState(client, FindDataMapOffs(client, "m_hActiveWeapon"));
 		}
 		return Plugin_Changed;
 	}
 	return Plugin_Continue;
 }
-
-
 
 public cmd_fn_pr_pr(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
@@ -225,7 +227,9 @@ public cmd_fn_pr_pr(client, ArrayList:m_args){
 
 	new String:pref[32];
 	if(m_args.Length < 3){
-		CPrintToChat(client, "[%s] Current preference: {lightgreen}%s{default} Select your team preference: stay|switch|any", CHAT_PFX, cur_pref_s);
+		decl String:cmd_prefix[10];
+		CVAR_matchplugin_cmd_prefix.GetString(cmd_prefix, sizeof(cmd_prefix));
+		CPrintToChat(client, "[%s] Current preference: {lightgreen}%s{default} Select your team preference: {lightgreen}%s pr stay|switch|any", CHAT_PFX, cur_pref_s, cmd_prefix);
 		return;
 	}
 	m_args.GetString(2, pref, sizeof(pref));

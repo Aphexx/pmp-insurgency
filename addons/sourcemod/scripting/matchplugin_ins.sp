@@ -98,11 +98,15 @@ public OnClientPutInServer(client){
 
 public OnClientDisconnect(client){
 	//if(!IsFakeClient(client))
+	PrintToServer("G_PLAYER_CNT::: %d", g_player_cnt);
 	if(!IsClientInGame(client))
 		return;
 	new TEAM:team = TEAM:GetClientTeam(client);
 	g_player_cnt--;
 	g_team_player_cnt[team]--;
+	if(g_player_cnt < 1){
+		MPINS_Native_SetMatchStatus(WAITING);
+	}
 	CreateTimer(1.0, Timer_check_players);
 }
 public InitPlugin(){
@@ -400,7 +404,6 @@ public Action:MPINS_OnChatCmd(client, const String:message[]){
 
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
 	if(g_new_match_status != MPINS_MatchStatus:NONE){
-		PrintToServer("MP::Changing Status to: %d", g_new_match_status);
 		new_status = g_new_match_status;
 		g_new_match_status = MPINS_MatchStatus:NONE;
 		return Plugin_Changed;
@@ -412,9 +415,7 @@ public on_match_waiting(){
 	InsertServerCommand("exec server.cfg");
 	ServerExecute();
 	exec_config(g_curcfg);
-	InsertServerCommand("mp_minteamplayers 50");
-	InsertServerCommand("mp_joinwaittime 100000");
-	ServerExecute();
+	warmup_start();
 	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
 }
 
@@ -426,8 +427,7 @@ public on_match_starting(){
 	g_team_player_limit[INSURGENTS] = g_team_player_cnt[INSURGENTS];
 	g_team_player_limit[SECURITY] = g_team_player_cnt[SECURITY];
 
-	InsertServerCommand("mp_minteamplayers 1");
-	InsertServerCommand("mp_joinwaittime 1");
+	warmup_end();
 	InsertServerCommand("sv_password \"%s\"", passwd);
 	ServerExecute();
 
@@ -454,6 +454,18 @@ public on_match_stoping(){
 
 public on_match_ended(){
 
+}
+
+
+warmup_start(){
+	InsertServerCommand("mp_minteamplayers 50");
+	InsertServerCommand("mp_joinwaittime 100000");
+	ServerExecute();
+}
+warmup_end(){
+	InsertServerCommand("mp_minteamplayers 1");
+	InsertServerCommand("mp_joinwaittime 1");
+	ServerExecute();
 }
 
 
@@ -541,21 +553,22 @@ public exec_config(String:cfgName[]){
  * FN
  */
 public cmd_fn_start(client, ArrayList:m_args){
-	if(g_match_status == WAITING){
-		MPINS_Native_UnsetWaitForReadiness(sig_WaitingForMatchStart);
-		MPINS_Native_SetMatchStatus(STARTING);
+	if(g_match_status != WAITING){
+		PrintToChat(client, "[%s] Game already started!", CHAT_PFX);
 		return;
 	}
-	PrintToChat(client, "[%s] Game already started!", CHAT_PFX);
+	MPINS_Native_UnsetWaitForReadiness(sig_WaitingForMatchStart);
+	MPINS_Native_SetMatchStatus(STARTING);
+	return;
 }
 
 public cmd_fn_stop(client, ArrayList:m_args){
-	if(g_match_status == LIVE || g_match_status == MODULE_HANDLED){
-		MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?", "match stop");
-		//MPINS_Native_SetMatchStatus(STOPING);
+	if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED)){
+		PrintToChat(client, "[%s] Game not running.", CHAT_PFX);
 		return;
 	}
-	PrintToChat(client, "[%s] Game not running.", CHAT_PFX);
+	MPINS_Native_VoteStart(client, "vote_match_stop", "Stop the match?", "match stop");
+	return;
 }
 
 public cmd_fn_changemap(client, ArrayList:m_args){
@@ -607,29 +620,30 @@ public cmd_fn_nextmap(client, ArrayList:m_args){
 }
 
 public cmd_fn_restartround(client, ArrayList:m_args){
-	if(g_match_status == LIVE ||
-	   g_match_status == MODULE_HANDLED){
-		MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?", "round restart");
-		return;
-	}else{
+	if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED)){
 		PrintToChat(client, "[%s] Match is not running", CHAT_PFX);
 		return;
 	}
+	MPINS_Native_VoteStart(client, "vote_restart_round", "Restart round?", "round restart");
 }
 public fn_restartround(){
+	if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED))
+		return;
 	PrintToChatAll("[%s] Restarting round...", CHAT_PFX);
 	InsertServerCommand("mp_restartround 5");
 	ServerExecute();
 }
 
 public cmd_fn_restartgame(client, ArrayList:m_args){
-	if(g_match_status != LIVE && g_match_status != MODULE_HANDLED){
+	if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED)){
 		PrintToChat(client, "[%s] Game not started yet", CHAT_PFX);
 		return;
 	}
 	MPINS_Native_VoteStart(client, "vote_restart_game", "Restart game?", "game restart");
 }
 public fn_restartgame(){
+	if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED))
+		return;
 	PrintToChatAll("[%s] Restarting game...", CHAT_PFX);
 	InsertServerCommand("mp_restartgame 5");
 	ServerExecute();
@@ -650,7 +664,7 @@ public fn_switchteams(){  //FIXME: allow only one team switch while round not ru
 
 public cmd_fn_ready(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
-	if(team != TEAM:SECURITY && team != TEAM:INSURGENTS)
+	if(!(team == TEAM:SECURITY || team == TEAM:INSURGENTS))
 		return;
 	if(!MPINS_Native_GetTeamReadiness(team))
 		MPINS_Native_SetTeamReadiness(team, true);
@@ -658,7 +672,7 @@ public cmd_fn_ready(client, ArrayList:m_args){
 
 public cmd_fn_notready(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
-	if(team != TEAM:SECURITY && team != TEAM:INSURGENTS)
+	if(!(team == TEAM:SECURITY || team == TEAM:INSURGENTS))
 		return;
 	if(MPINS_Native_GetTeamReadiness(team))
 		MPINS_Native_SetTeamReadiness(team, false);
@@ -687,7 +701,7 @@ public cmd_fn_showpassword(client, ArrayList:m_args){
 
 
 public cmd_fn_execcfg(client, ArrayList:m_args){
-	if(g_match_status != WAITING && g_match_status != ENDED){
+	if(!(g_match_status == WAITING || g_match_status == ENDED)){
 		PrintToChat(client, "[%s] Config can't be changed while match is running", CHAT_PFX);
 		return;
 	}
@@ -817,9 +831,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 	CreateNative("MPINS_Native_GetTeamReadiness", Native_GetTeamReadiness);
 	CreateNative("MPINS_Native_SetTeamReadiness", Native_SetTeamReadiness);
-	//native bool:MPINS_Native_GetTeamReadiness(team);
-	//native MPINS_Native_SetTeamReadiness(team, bool:rdy);
-
 
 	FWD_OnMatchStatusChange = CreateGlobalForward("MPINS_OnMatchStatusChange", ET_Hook, Param_Cell, Param_CellByRef);
 	FWD_OnChatCmd = CreateGlobalForward("MPINS_OnChatCmd", ET_Event, Param_Cell, Param_String);
@@ -996,6 +1007,10 @@ public void VoteHandler_match_stop(Menu menu,
 	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
 	if(winner_ratio >= g_vote_ratio){
 		if(StrEqual(winner, VOTE_OPT_YES)){
+			if(!(g_match_status == LIVE || g_match_status == MODULE_HANDLED)){
+				PrintToChatAll("[%s] Game not running.", CHAT_PFX);
+				return;
+			}
 			MPINS_Native_SetMatchStatus(STOPING);
 		}
 	}else{
@@ -1074,7 +1089,6 @@ public void VoteHandler_switch_teams(Menu menu,
 
 
 
-/* -Readiness */
 public Native_SetWaitForReadiness(Handle:plugin, int numParams){
 	new String:new_rdy_for[64];
 	new String:new_rdy_descr[256];
@@ -1088,8 +1102,6 @@ public Native_SetWaitForReadiness(Handle:plugin, int numParams){
 	g_is_waiting_rdy = true;
 	g_rdy_for = new_rdy_for;
 	g_rdy_descr = new_rdy_descr;
-
-	//CPrintToChatAll("[%s] Waiting ready signal", CHAT_PFX);
 	CPrintToChatAll("[%s] Type {green}%s ready {default}when all of your team are ready for %s", CHAT_PFX,  g_chat_command_prefix, g_rdy_descr);
 }
 public Native_UnsetWaitForReadiness(Handle:plugin, int numParams){
@@ -1150,7 +1162,7 @@ public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[], const String:
 	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
 
 	PrintToServer("[%s] %s team ready for %s", CHAT_PFX, TeamName, rdy_descr);
-	PrintToChatAll("[%s] %s team ready for %s", CHAT_PFX, TeamName, rdy_descr);
+	CPrintToChatAll("[%s] {green}%s {default}team ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = true;
 	if(g_teams_rdy[team:SECURITY] && g_teams_rdy[team:INSURGENTS]){
 		Call_StartForward(FWD_OnAllTeamsReady);
@@ -1168,7 +1180,7 @@ public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[], const Strin
 	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
 
 	PrintToServer("[%s] %s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
-	PrintToChatAll("[%s] %s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
+	CPrintToChatAll("[%s] {green}%s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = false;
 	return Plugin_Continue;
 }
@@ -1218,16 +1230,36 @@ public Action:Timer_check_players(Handle:timer){
 
 
 
-
+DumpClientsToChat(){
+	new TEAM:team;
+	decl String:AuthID[32];
+	decl String:team_n[32];
+	for(new TEAM:t; t < TEAM; t++){
+		if(t == TEAM:NONE || t == TEAM:SPECTATORS)
+			continue;
+		InsGetTeamName(t, team_n, sizeof(team_n));
+		CPrintToChatAll("{green}   %s", team_n);
+		for(new i = 1; i <= MaxClients; i++){
+			if(!IsClientInGame(i) || IsFakeClient(i))
+				continue;
+			team = TEAM:GetClientTeam(i);
+			if(team != t)
+				continue;
+			GetClientAuthId(i, AuthId_Engine, AuthID, sizeof(AuthID));
+			ReplaceString(AuthID, sizeof(AuthID), "STEAM_", "");
+			CPrintToChatAll("{green}       %N <%s>", i, AuthID);
+		}
+	}
+}
 
 
 
 public Action:start_stage_1(Handle:timer){
-	CPrintToChatAll("{green}%s","=================");
+	CPrintToChatAll("{green}%s","===============================");
 	CPrintToChatAll("{green}%s","Game Ready!");
-	CPrintToChatAll("{green}%s","=================");
-	CPrintToChatAll("{green}%s","POV demo started?");
-	CPrintToChatAll("{green}%s","=================");
+	CPrintToChatAll("{green}%s","===============================");
+	DumpClientsToChat();
+	CPrintToChatAll("{green}%s","===============================");
 	CreateTimer(7.0, start_stage_2);
 }
 

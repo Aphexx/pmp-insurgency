@@ -276,15 +276,17 @@ public pause(TEAM:team){
 }
 
 public unpause(){
-	if(g_unpause_timer)
-		KillTimer(g_unpause_timer);
+	// FIXME: handlers close trouble after server goes hibernation 
+	//if(g_unpause_timer)
+	//	CloseHandle(g_unpause_timer);
 	g_pauser = TEAM:NONE;
 	MPINS_Native_UnsetWaitForReadiness(WaitingForUnpause);
 	pause_SetState(UNPAUSING);
 }
 public pause_reset(){
-	if(g_unpause_timer)
-		KillTimer(g_unpause_timer);
+	// FIXME: handlers close trouble after server goes hibernation
+	//if(g_unpause_timer)
+	//	CloseHandle(g_unpause_timer);
 	g_pauser = TEAM:NONE;
 	g_time_limit_force = g_timer_force_unpause;
 	for(new TEAM:t; t<TEAM;t++){
@@ -358,8 +360,7 @@ pause_request(client=0, TEAM:team=TEAM:NONE){
 }
 
 
-public Action:Timer_Unpause(Handle:timer, time_passed){
-	//PrintToServer("TIMER FIRED: %d::%d::%d", time_passed, g_time_limits[g_pauser], g_time_limit_force);
+public Action:Timer_Unpause(Handle:timer, time_passed){ //FIXME: timer handler close/server hibernation problem
 	if(g_paused == PAUSE_STATE:PAUSED){
 		if(MPINS_Native_GetTeamReadiness(g_pauser)){ // If pauser team already ready //FIXME: can be abused to momental autounpause
 			if(g_time_limit_force <= 0){
@@ -400,7 +401,7 @@ public Action:Timer_Unpause(Handle:timer, time_passed){
 					g_unpause_timer = CreateTimer(float(time_left), Timer_Unpause, time_left);
 				}else{
 					g_unpause_timer = INVALID_HANDLE;
-					CPrintToChatAll("[%s] You can vote again in %.f seconds", CHAT_PFX);
+					CPrintToChatAll("[%s] Game will be automaticly unpaused", CHAT_PFX);
 					unpause();
 					return;
 				}
