@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.5a",
+	version = "2.0.6a",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -48,6 +48,8 @@ new StringMap:g_cmds_fn;	//"fn_name" -> "plugin_handler"
 //new StringMap:g_cmds_help;	//"cmd" -> "help info"'
 new StringMap:g_votes;
 new StringMap:g_votes_fn;
+new Handle:g_voting_fn_plugin;
+new String:g_voting_fn_name[128];
 
 new bool:g_is_waiting_rdy;
 new bool:g_teams_rdy[TEAM];
@@ -67,6 +69,9 @@ new ConVar:CVAR_matchplugin_welcome;
 new ConVar:CVAR_matchplugin_hostname_status;
 new ConVar:CVAR_matchplugin_hostname_showpw;
 new ConVar:CVAR_matchplugin_disable_kill_cmd;
+new ConVar:CVAR_matchplugin_forbid_team_change;
+new ConVar:CVAR_matchplugin_generate_pw;
+new ConVar:CVAR_matchplugin_vote_cooldown;
 
 
 new const String:sig_WaitingForMatchStart[] = "match_start";
@@ -90,8 +95,8 @@ public OnMapStart(){
 public OnConfigsExecuted(){
 	new maplist_serial = -1;
 	ReadMapList(g_maplist, maplist_serial, "default", MAPLIST_FLAG_CLEARARRAY);
-	//MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
-	SetIdlingHostname();
+	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
+	CreateTimer(1.0, Timer_SetIdlingHostname); // Dirtyfix for server.cfg executed after this event fired
 	if(CVAR_matchplugin_disable_kill_cmd.BoolValue)
 		disable_kill_cmd();
 }
@@ -163,8 +168,8 @@ public InitVars(){
 	MPINS_Native_RegCmd("restartgame",		"cmd_fn_restartgame", ch);
 	MPINS_Native_RegCmd("st",				"cmd_fn_switchteams", ch);
 	MPINS_Native_RegCmd("switchteams",		"cmd_fn_switchteams", ch);
-	MPINS_Native_RegCmd("sp",				"cmd_fn_showpassword", ch);
-	MPINS_Native_RegCmd("showpassword",		"cmd_fn_showpassword", ch);
+	MPINS_Native_RegCmd("pw",				"cmd_fn_showpassword", ch);
+	MPINS_Native_RegCmd("password",			"cmd_fn_showpassword", ch);
 	MPINS_Native_RegCmd("status",			"cmd_fn_status", ch);
 	MPINS_Native_RegCmd("lc",				"cmd_fn_listcfg", ch);
 	MPINS_Native_RegCmd("listcfg",			"cmd_fn_listcfg", ch);
@@ -186,6 +191,11 @@ public InitCVARs(){
 	CVAR_matchplugin_hostname_status =			CreateConVar("sm_matchplugin_hostname_status",		"1",					"Enables displaying server status at hostname tail");
 	CVAR_matchplugin_hostname_showpw = 			CreateConVar("sm_matchplugin_hostname_showpw",		"1",					"Enables displaying default server password while match not running");
 	CVAR_matchplugin_disable_kill_cmd =			CreateConVar("sm_matchplugin_disable_kill_cmd",		"1",					"Disable 'kill' cmd for players");
+	CVAR_matchplugin_forbid_team_change =		CreateConVar("sm_matchplugin_forbid_team_change",	"1",					"Forbid players from changing team while match is running");
+	CVAR_matchplugin_generate_pw = 				CreateConVar("sm_matchplugin_generate_pw",			"1",					"Randomly generate password on match start");
+	CVAR_matchplugin_vote_cooldown =			CreateConVar("sm_matchplugin_vote_cooldown",		"30",					"Cooldown in seconds between player votes");
+
+
 	CVAR_hostname = FindConVar("hostname");
 	CVAR_sv_password = FindConVar("sv_password");
 
@@ -276,7 +286,6 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 	new TEAM:oldteam = TEAM:GetEventInt(event, "oldteam");
 	new TEAM:team = TEAM:GetEventInt(event, "team");
 
-	PrintToServer("[PLAYER_TEAM] %N oldteam=%d, team=%d", client, oldteam, team);
 	g_team_player_cnt[team]++;
 	if(oldteam){
 		g_team_player_cnt[oldteam]--;
@@ -309,6 +318,8 @@ public Action:Command_jointeam(client, const char[] command, int argc){
 	}
 	if(g_match_status == WAITING)
 		return Plugin_Continue;
+	if(!CVAR_matchplugin_forbid_team_change.BoolValue)
+		return Plugin_Continue;
    	if(cur_team == SPECTATORS){// || cur_team == TEAM:NONE){
 		if(g_team_player_cnt[new_team] < g_team_player_limit[new_team]){
 			return Plugin_Continue;
@@ -321,6 +332,8 @@ public Action:Command_jointeam(client, const char[] command, int argc){
 }
 public Action:Command_spectate(client, const char[] command, int argc){
 	if(g_match_status == WAITING)
+		return Plugin_Continue;
+	if(!CVAR_matchplugin_forbid_team_change.BoolValue)
 		return Plugin_Continue;
 	ReplyToCommand(client, "Team switching is restricted while match is running");
 	return Plugin_Handled;
@@ -426,7 +439,6 @@ public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_Mat
 }
 
 public on_match_waiting(){
-	PrintToServer("\n\n\n\n=============s================================================\n             ON MATCH WAITING\n\n\n");
 	InsertServerCommand("exec server.cfg");
 	ServerExecute();
 	exec_config(g_curcfg);
@@ -436,16 +448,16 @@ public on_match_waiting(){
 }
 
 public on_match_starting(){
-	new String:passwd[5];
-	new passwd_r = GetRandomInt(1000, 9999);
-	IntToString(passwd_r, passwd, sizeof(passwd));
-
 	g_team_player_limit[INSURGENTS] = g_team_player_cnt[INSURGENTS];
 	g_team_player_limit[SECURITY] = g_team_player_cnt[SECURITY];
-
 	warmup_end();
-	CVAR_sv_password.SetString(passwd);
 	MPINS_Native_SetHostnamePostfix("LIVE");
+	if(CVAR_matchplugin_generate_pw.BoolValue){
+		new String:passwd[5];
+		new passwd_r = GetRandomInt(1000, 9999);
+		IntToString(passwd_r, passwd, sizeof(passwd));
+		CVAR_sv_password.SetString(passwd);
+	}
 	CreateTimer(1.0, start_stage_1);
 }
 
@@ -548,9 +560,7 @@ public create_default_config_file(String:configFilePath[]){
 
 public exec_config(String:cfgName[]){
 	new String:cfgFile[127];
-
 	if(g_configs.GetString(cfgName, cfgFile, sizeof(cfgFile))){
-		PrintToServer("\n\n================================================================\n\nEXEC: %s\n\n\n", cfgFile);
 		InsertServerCommand("exec %s", cfgFile);
 		ServerExecute();
 		return true;
@@ -805,7 +815,7 @@ public MPINS_OnHelpCalled(client){
     PrintToConsole(client, " rr              Round restart");
     PrintToConsole(client, " st              Switch teams");
     PrintToConsole(client, " ks              Kick spectators");
-    PrintToConsole(client, " sp              Show password");
+    PrintToConsole(client, " pw              Show password");
 }
 
 
@@ -975,7 +985,7 @@ public Native_VoteStart(Handle:plugin, int numParams){
 		return false;
 	}
 	new client = GetNativeCell(1);
-	new cooldown = 10;
+	new cooldown = CVAR_matchplugin_vote_cooldown.IntValue;
 	new Float:et = GetEngineTime();
 	if(g_voting_cNextvote[client] > et){
 		PrintToChat(client, "[%s] You can vote again in %.f seconds", CHAT_PFX, (g_voting_cNextvote[client]-et));
@@ -991,9 +1001,14 @@ public Native_VoteStart(Handle:plugin, int numParams){
 		new Handle:buf_fn_plugin;
 		if(g_votes_fn.GetValue(buf_fn_name, buf_fn_plugin)){
 			new VoteHandler:vote_fn;
-			vote_fn = VoteHandler:GetFunctionByName(buf_fn_plugin, buf_fn_name);
+			vote_fn = VoteHandler:GetFunctionByName(INVALID_HANDLE, buf_fn_name);
+			if(vote_fn == INVALID_FUNCTION){
+				vote_fn = VoteHandler:GetFunctionByName(INVALID_HANDLE, "VoteHandler_Generic");
+				strcopy(g_voting_fn_name, sizeof(g_voting_fn_name), buf_fn_name);
+				g_voting_fn_plugin = buf_fn_plugin;
+			}
 
-			PrintToChatAll("[%s] %N requested %s", CHAT_PFX, client, g_voting_descr);
+			PrintToChatAll("[%s] %N requested to %s", CHAT_PFX, client, g_voting_descr);
 			g_voting_menu = new Menu(Handle_VoteMenu);
 			g_voting_menu.VoteResultCallback = vote_fn;
 			g_voting_menu.SetTitle(g_voting_tittle);
@@ -1010,7 +1025,6 @@ public Native_VoteStart(Handle:plugin, int numParams){
 
 
 /* Vote Handlers */
-
 public void VoteHandler_match_stop(Menu menu,
 								   int num_votes,
 								   int num_clients,
@@ -1102,6 +1116,41 @@ public void VoteHandler_switch_teams(Menu menu,
 	}else{
 		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
 	}
+}
+
+
+public void VoteHandler_Generic(Menu menu,
+								int num_votes,
+								int num_clients,
+								const int[][] client_info,
+								int num_items,
+								const int[][] item_info){
+	new client_info_index[50];
+	new client_info_item[50];
+	new item_info_index[32];
+	new item_info_votes[32];
+	for(new i=0;i<num_clients;i++){
+		client_info_index[i] = client_info[i][VOTEINFO_CLIENT_INDEX];
+		client_info_item[i] = client_info[i][VOTEINFO_CLIENT_ITEM];
+	}
+	for(new i=0;i<num_items;i++){
+		item_info_index[i] = item_info[i][VOTEINFO_ITEM_INDEX];
+		item_info_votes[i] = item_info[i][VOTEINFO_ITEM_VOTES];
+	}
+
+
+	new Function:vote_fn = GetFunctionByName(g_voting_fn_plugin, g_voting_fn_name);
+	//PrintToServer(">>>GENERIC: %d:%s", g_voting_fn_plugin, g_voting_fn_name);
+	Call_StartFunction(g_voting_fn_plugin, vote_fn);
+	Call_PushCell(menu);
+	Call_PushCell(num_votes);
+	Call_PushCell(num_clients);
+	Call_PushArray(client_info_index, sizeof(client_info_index));
+	Call_PushArray(client_info_item, sizeof(client_info_item));
+	Call_PushCell(num_items);
+	Call_PushArray(item_info_index, sizeof(item_info_index));
+	Call_PushArray(item_info_votes, sizeof(item_info_votes));
+	Call_Finish();
 }
 /* ============ */
 
@@ -1203,7 +1252,6 @@ public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[], const String:
 	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
 	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
 
-	PrintToServer("[%s] %s team ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	CPrintToChatAll("[%s] {green}%s {default}team ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = true;
 	if(g_teams_rdy[team:SECURITY] && g_teams_rdy[team:INSURGENTS]){
@@ -1221,14 +1269,12 @@ public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[], const Strin
 	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
 	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
 
-	PrintToServer("[%s] %s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	CPrintToChatAll("[%s] {green}%s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = false;
 	return Plugin_Continue;
 }
 
 public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_descr[]){
-	PrintToServer("[%s] Both teams ready for %s", CHAT_PFX, rdy_descr);
 	PrintToChatAll("[%s] Both teams ready for %s", CHAT_PFX, rdy_descr);
 	MPINS_Native_UnsetWaitForReadiness(rdy_for);
 	if(StrEqual(rdy_for, sig_WaitingForMatchStart)){
@@ -1241,13 +1287,9 @@ public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_des
 
 
 public Action:Timer_check_players(Handle:timer){
-	//PrintToServer("Timer Check Players");
-	//PrintToServer("   g_match_status: %d", g_match_status);
-	//PrintToServer("   g_player_cnt: %d", g_player_cnt);
 	for(new TEAM:team; team<TEAM;team++){
 		if(team == TEAM:NONE || team == TEAM:SPECTATORS)
 			continue;
-		//PrintToServer("   g_team_player_cnt[%d]: %d", team, g_team_player_cnt[team]);
 		if(g_team_player_cnt[team]<1){
 			new String:rdy_for[64];
 			MPINS_Native_GetCurrentReadinessFor(rdy_for, sizeof(rdy_for));
@@ -1266,6 +1308,9 @@ public Action:Timer_check_players(Handle:timer){
 			MPINS_Native_SetMatchStatus(STOPING);
 		}
 	}
+}
+public Action:Timer_SetIdlingHostname(Handle:timer){
+	SetIdlingHostname();
 }
 
 

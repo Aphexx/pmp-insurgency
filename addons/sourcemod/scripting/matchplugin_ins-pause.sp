@@ -13,6 +13,7 @@ new ConVar:CVAR_matchplugin_disconnect_autopause;
 new ConVar:CVAR_matchplugin_pause_team_limit;
 new ConVar:CVAR_matchplugin_pause_time_limit;
 new ConVar:CVAR_matchplugin_pause_delay_nextround;
+new ConVar:CVAR_sv_pausable;
 
 
 new const String:WaitingForUnpause[] = "pause_unpause";
@@ -44,6 +45,7 @@ public void OnPluginStart(){
 	CVAR_matchplugin_pause_team_limit = 	CreateConVar("sm_matchplugin_pause_team_limit",			"-1",	"Pause limit per team; -1 for no limit");
 	CVAR_matchplugin_pause_time_limit = 	CreateConVar("sm_matchplugin_pause_time_limit",			"-1",	"Pause time limit in seconds after what game will be automaticly unpaused; -1 for no limit");
 	CVAR_matchplugin_pause_delay_nextround =CreateConVar("sm_matchplugin_pause_delay_nextround",	"0",	"Disallow ingame pause and delay all pauses till next round start");
+	CVAR_sv_pausable = FindConVar("sv_pausable");
 	AutoExecConfig(true);
 
 	RegConsoleCmd("say", Command_say);
@@ -135,21 +137,7 @@ public Action:Command_say_team(client, args){
 public Action:GameEvents_RoundStart(Handle:event, const String:name[], bool:dontBroadcast){
 	if(!CVAR_matchplugin_pause_delay_nextround.BoolValue)
 		return Plugin_Continue;
-	new MPINS_MatchStatus:match_status;
-	MPINS_Native_GetMatchStatus(match_status);
-	if((match_status == LIVE || match_status == MODULE_HANDLED) && g_paused == NOT_PAUSED){
-		if(g_team_pause_req[SECURITY]){
-			for(new TEAM:t; t<TEAM;t++){
-				g_team_pause_req[t] = false;
-			}
-			pause_request(0, SECURITY);
-		}else if(g_team_pause_req[INSURGENTS]){
-			for(new TEAM:t; t<TEAM;t++){
-				g_team_pause_req[t] = false;
-			}
-			pause_request(0, INSURGENTS);
-		}
-	}
+	CreateTimer(1.0, Timer_DelayedPause);
 	return Plugin_Continue;
 }
 public Action:GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast){
@@ -205,6 +193,8 @@ public pause_OnNotPaused(){
 }
 
 public pause_OnPaused(){
+	if(!CVAR_sv_pausable.BoolValue)
+		CVAR_sv_pausable.SetBool(true);
 	InsertServerCommand("setpause");
 	ServerExecute();
 }
@@ -406,7 +396,23 @@ public Action:Timer_Unpause(Handle:timer, time_passed){
 
 }
 
-
+public Action:Timer_DelayedPause(Handle:timer, time_passed){
+	new MPINS_MatchStatus:match_status;
+	MPINS_Native_GetMatchStatus(match_status);
+	if((match_status == LIVE || match_status == MODULE_HANDLED) && g_paused == NOT_PAUSED){
+		if(g_team_pause_req[SECURITY]){
+			for(new TEAM:t; t<TEAM;t++){
+				g_team_pause_req[t] = false;
+			}
+			pause_request(0, SECURITY);
+		}else if(g_team_pause_req[INSURGENTS]){
+			for(new TEAM:t; t<TEAM;t++){
+				g_team_pause_req[t] = false;
+			}
+			pause_request(0, INSURGENTS);
+		}
+	}
+}
 
 
 

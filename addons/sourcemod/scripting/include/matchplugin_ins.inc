@@ -65,6 +65,21 @@ native MPINS_Native_SetHostnamePostfix(const String:postfix[]);
 
 
 
+
+
+stock PrintToChatTeam(TEAM:team, String:msg[], String:...){
+	decl String:FormattedMessage[512];
+	VFormat(FormattedMessage, sizeof(FormattedMessage), msg, 3);
+	for(new i = 1; i <= MaxClients; i++){
+		if(!(IsClientInGame(i) && !IsFakeClient(i)))
+		    continue;
+		if(TEAM:GetClientTeam(i) == team){
+			PrintToChat(i, FormattedMessage);
+		}
+	}
+}
+
+
 stock bool:IsValidClient(client, bool:nobots = true){
 	if(client <= 0 || client > MaxClients || !IsClientConnected(client))
 		return false;

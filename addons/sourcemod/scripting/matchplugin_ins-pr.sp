@@ -10,7 +10,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Pistol Round",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Pistol Round for Insurgency Match Plugin",
-	version = "0.9.1",
+	version = "0.9.3",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -21,8 +21,9 @@ enum MPINS_PR_Status{
 };
 new MPINS_PR_Status:g_pr_status;
 enum MPINS_PR_TeamWant{
-	STAY,
-	SWITCH,
+	NONE,
+	SEC,
+    INS,
 	ANY
 };
 new MPINS_PR_TeamWant:g_pr_teams[TEAM];
@@ -32,15 +33,19 @@ new TEAM:g_winner;
 new ConVar:CVAR_pistolround_enabled_default;
 new ConVar:CVAR_matchplugin_cmd_prefix;
 new bool:g_pistolround_enabled;
+new bool:pr_hooked;
 
 public void OnPluginStart(){
 	CreateCVARs();
 }
 public void OnAllPluginsLoaded(){
+	CVAR_matchplugin_cmd_prefix = FindConVar("sm_matchplugin_cmd_prefix");
 	new Handle:ch = GetMyHandle();
 	MPINS_Native_RegCmd("pr",			"cmd_fn_pr_pr", ch);
 	MPINS_Native_RegCmd("pistolround",	"cmd_fn_pr_pr", ch);
-	CVAR_matchplugin_cmd_prefix = FindConVar("sm_matchplugin_cmd_prefix");
+
+	MPINS_Native_RegVote("vote_pr_disable_pr",		"VoteHandler_pr_disable_pr", ch);
+	MPINS_Native_RegVote("vote_pr_enalbe_pr",		"VoteHandler_pr_enalbe_pr", ch);
 }
 public void OnConfigsExecuted(){
 	g_pistolround_enabled = GetConVarBool(CVAR_pistolround_enabled_default);
@@ -59,6 +64,7 @@ public PR_HookEvents(){
 	HookEvent("weapon_deploy", GameEvents_WeaponDeploy);
 	HookEvent("player_first_spawn", GameEvents_PlayerSpawn);
 	HookEvent("player_spawn", GameEvents_PlayerSpawn);
+	pr_hooked = true;
 }
 public PR_UnhookEvents(){
 	UnhookEvent("round_start", GameEvents_RoundStart,  EventHookMode_PostNoCopy);
@@ -67,11 +73,12 @@ public PR_UnhookEvents(){
 	UnhookEvent("weapon_deploy", GameEvents_WeaponDeploy);
 	UnhookEvent("player_first_spawn", GameEvents_PlayerSpawn);
 	UnhookEvent("player_spawn", GameEvents_PlayerSpawn);
+	pr_hooked = false;
 }
 
 public MPINS_OnHelpCalled(client){
 	PrintToConsole(client, " pr 1/0          enable/disable pistol round");
-	PrintToConsole(client, " pr PREFERENCE   team preference stay|switch|any");
+	PrintToConsole(client, " pr PREFERENCE   team preference sec|ins|any");
 }
 
 public change_status(MPINS_PR_Status:new_status){
@@ -84,10 +91,11 @@ public change_status(MPINS_PR_Status:new_status){
 }
 public pr_reset(){
 	for(new TEAM:i; i<TEAM;i++){
-	    g_pr_teams[i] = STAY;
+		g_pr_teams[i] = MPINS_PR_TeamWant:NONE;
 	}
 	g_winner = SPECTATORS;
-	PR_UnhookEvents();
+	if(pr_hooked)
+		PR_UnhookEvents();
 }
 
 public PR_on_reset(){
@@ -96,18 +104,18 @@ public PR_on_reset(){
 public PR_on_live(){
 	decl String:cmd_prefix[10];
 	CVAR_matchplugin_cmd_prefix.GetString(cmd_prefix, sizeof(cmd_prefix));
-	CPrintToChatAll("[%s] Type {lightgreen}%s pr switch|stay|any {default} to select team preference", CHAT_PFX, cmd_prefix);
+	CPrintToChatAll("[%s] Type {lightgreen}%s pr sec|ins|any {default} to select team preference", CHAT_PFX, cmd_prefix);
 	CPrintToChatAll("{lightgreen}PISTOL ROUND\nLIVE");
-	PR_HookEvents();
+	if(!pr_hooked)
+		PR_HookEvents();
 }
 public PR_on_ended(){
-	PrintToServer("[%s] Pistol round ended", CHAT_PFX);
 	PrintToChatAll("[%s] Pistol round ended", CHAT_PFX);
 	new TEAM:looser = (g_winner == SECURITY) ? INSURGENTS : SECURITY;
-	if(g_pr_teams[g_winner] == SWITCH){
+	if((g_pr_teams[g_winner] == SEC && g_winner == INSURGENTS) || (g_pr_teams[g_winner] == INS && g_winner == SECURITY)){
 		PrintToChatAll("[%s] Teams will be switched", CHAT_PFX);
 		InsertServerCommand("mp_switchteams");
-	}else if((g_pr_teams[g_winner] == ANY) && (g_pr_teams[looser] == SWITCH)){
+	}else if((g_pr_teams[g_winner] == ANY) && ((g_pr_teams[looser] == SEC && looser == INSURGENTS) || (g_pr_teams[looser] == INS && looser == SECURITY))){
 		PrintToChatAll("[%s] Teams will be switched", CHAT_PFX);
 		InsertServerCommand("mp_switchteams");
 	}
@@ -221,15 +229,15 @@ public Action:StripWeapons(client){
 public cmd_fn_pr_pr(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
 	new String:cur_pref_s[32];
-	if(g_pr_teams[team] == STAY)		strcopy(cur_pref_s, sizeof(cur_pref_s), "stay");
-	else if(g_pr_teams[team] == SWITCH)	strcopy(cur_pref_s, sizeof(cur_pref_s), "switch");
+	if(g_pr_teams[team] == SEC)			strcopy(cur_pref_s, sizeof(cur_pref_s), "security");
+	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgents");
 	else strcopy(cur_pref_s, sizeof(cur_pref_s), "any");
 
 	new String:pref[32];
 	if(m_args.Length < 3){
 		decl String:cmd_prefix[10];
 		CVAR_matchplugin_cmd_prefix.GetString(cmd_prefix, sizeof(cmd_prefix));
-		CPrintToChat(client, "[%s] Current preference: {lightgreen}%s{default} Select your team preference: {lightgreen}%s pr stay|switch|any", CHAT_PFX, cur_pref_s, cmd_prefix);
+		CPrintToChat(client, "[%s] Current preference: {lightgreen}%s{default} Select your team preference: {lightgreen}%s pr sec|ins|any", CHAT_PFX, cur_pref_s, cmd_prefix);
 		return;
 	}
 	m_args.GetString(2, pref, sizeof(pref));
@@ -239,25 +247,93 @@ public cmd_fn_pr_pr(client, ArrayList:m_args){
 			PrintToChat(client, "[%s] Pistol round already stared", CHAT_PFX);
 			return;
 		}
-		CPrintToChatAll("[%s] Pistol round disabled", CHAT_PFX);
-		g_pistolround_enabled = false;
+		if(g_pistolround_enabled){
+			MPINS_Native_VoteStart(client, "vote_pr_disable_pr", "Disable pistol round?", "disable the pistol round");
+		}
 		return;
 	}else if(StrEqual(pref, "1") || StrEqual(pref, "on", false)){
-		CPrintToChatAll("[%s] Pistol round enabled", CHAT_PFX);
-		g_pistolround_enabled = true;
+		if(g_pr_status == MPINS_PR_Status:LIVE){
+			PrintToChat(client, "[%s] Pistol round already stared", CHAT_PFX);
+			return;
+		}
+		if(!g_pistolround_enabled){
+			MPINS_Native_VoteStart(client, "vote_pr_enalbe_pr", "Enalbe pistol round?", "enable the pistol round");
+		}
 		return;
-	}else if(StrEqual(pref, "stay") || StrEqual(pref, "st")){
-		g_pr_teams[team] = STAY;
-	}else if(StrEqual(pref, "switch") || StrEqual(pref, "sw")){
-		g_pr_teams[team] = SWITCH;
+	}else if(StrEqual(pref, "security") || StrEqual(pref, "sec")){
+		g_pr_teams[team] = SEC;
+	}else if(StrEqual(pref, "insurgents") || StrEqual(pref, "ins")){
+		g_pr_teams[team] = INS;
 	}else if(StrEqual(pref, "any") || StrEqual(pref, "a")){
 		g_pr_teams[team] = ANY;
 	}else{
-		CPrintToChat(client, "[%s] Current preference: {lightgreen}%s{default} Preferences: stay|switch|any", CHAT_PFX, cur_pref_s);
+		CPrintToChat(client, "[%s] Current team preference: {lightgreen}%s{default} Preferences: sec|ins|any", CHAT_PFX, cur_pref_s);
 		return;
 	}
-	if(g_pr_teams[team] == STAY)		strcopy(cur_pref_s, sizeof(cur_pref_s), "stay");
-	else if(g_pr_teams[team] == SWITCH)	strcopy(cur_pref_s, sizeof(cur_pref_s), "switch");
+	if(g_pr_teams[team] == SEC)			strcopy(cur_pref_s, sizeof(cur_pref_s), "security");
+	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgents");
 	else strcopy(cur_pref_s, sizeof(cur_pref_s), "any");
-	CPrintToChat(client, "[%s] New preference: {lightgreen}%s{default}", CHAT_PFX, cur_pref_s);
+	PrintToChatTeam(team, "[%s] New team preference set to %s", CHAT_PFX, cur_pref_s);
+}
+
+
+
+public void VoteHandler_pr_disable_pr(Menu menu,
+									  int num_votes,
+									  int num_clients,
+									  const int[] client_info_index,
+									  const int[] client_info_item,
+									  int num_items,
+									  const int[] item_info_index,
+									  const int[] item_info_votes){
+	new String:winner[64];
+	new winner_votes;
+	new g_vote_ratio = 100;
+
+	menu.GetItem(item_info_index[0], winner, sizeof(winner));
+	winner_votes = item_info_votes[0];
+	new winner_ratio = ((winner_votes * 100)/num_votes);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
+	if(winner_ratio >= g_vote_ratio){
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			if(g_pr_status == MPINS_PR_Status:LIVE){
+				PrintToChatAll("[%s] Pistol round already stared", CHAT_PFX);
+				return;
+			}
+			CPrintToChatAll("[%s] Pistol round disabled", CHAT_PFX);
+			g_pistolround_enabled = false;
+		}
+	}else{
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
+	}
+}
+
+public void VoteHandler_pr_enalbe_pr(Menu menu,
+									 int num_votes,
+									 int num_clients,
+									 const int[] client_info_index,
+									 const int[] client_info_item,
+									 int num_items,
+									 const int[] item_info_index,
+									 const int[] item_info_votes){
+	new String:winner[64];
+	new winner_votes;
+	new g_vote_ratio = 100;
+
+	menu.GetItem(item_info_index[0], winner, sizeof(winner));
+	winner_votes = item_info_votes[0];
+	new winner_ratio = ((winner_votes * 100)/num_votes);
+	PrintToChatAll("[%s] Vote: %d%% of players voted for %s", CHAT_PFX, winner_ratio, winner);
+	if(winner_ratio >= g_vote_ratio){
+		if(StrEqual(winner, VOTE_OPT_YES)){
+			if(g_pr_status == MPINS_PR_Status:LIVE){
+				PrintToChatAll("[%s] Pistol round already stared", CHAT_PFX);
+				return;
+			}
+			CPrintToChatAll("[%s] Pistol round enalbed", CHAT_PFX);
+			g_pistolround_enabled = true;
+		}
+	}else{
+		PrintToChatAll("[%s] Vote failed", CHAT_PFX);
+	}
 }
