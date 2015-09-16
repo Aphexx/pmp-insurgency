@@ -10,7 +10,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Pistol Round",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Pistol Round for Insurgency Match Plugin",
-	version = "0.9.3",
+	version = "1.0.0",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -230,7 +230,7 @@ public cmd_fn_pr_pr(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
 	new String:cur_pref_s[32];
 	if(g_pr_teams[team] == SEC)			strcopy(cur_pref_s, sizeof(cur_pref_s), "security");
-	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgents");
+	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgency");
 	else strcopy(cur_pref_s, sizeof(cur_pref_s), "any");
 
 	new String:pref[32];
@@ -262,7 +262,7 @@ public cmd_fn_pr_pr(client, ArrayList:m_args){
 		return;
 	}else if(StrEqual(pref, "security") || StrEqual(pref, "sec")){
 		g_pr_teams[team] = SEC;
-	}else if(StrEqual(pref, "insurgents") || StrEqual(pref, "ins")){
+	}else if(StrEqual(pref, "insurgency") || StrEqual(pref, "ins")){
 		g_pr_teams[team] = INS;
 	}else if(StrEqual(pref, "any") || StrEqual(pref, "a")){
 		g_pr_teams[team] = ANY;
@@ -271,7 +271,7 @@ public cmd_fn_pr_pr(client, ArrayList:m_args){
 		return;
 	}
 	if(g_pr_teams[team] == SEC)			strcopy(cur_pref_s, sizeof(cur_pref_s), "security");
-	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgents");
+	else if(g_pr_teams[team] == INS)	strcopy(cur_pref_s, sizeof(cur_pref_s), "insurgency");
 	else strcopy(cur_pref_s, sizeof(cur_pref_s), "any");
 	PrintToChatTeam(team, "[%s] New team preference set to %s", CHAT_PFX, cur_pref_s);
 }

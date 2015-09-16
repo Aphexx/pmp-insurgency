@@ -28,10 +28,6 @@ enum MPINS_MatchStatus{
 	MODULE_HANDLED
 };
 
-
-
-
-
 native MPINS_Native_RegCmd(String:cmd_alias[], String:cmd_fn_name[], Handle:cmd_plugin);
 native MPINS_Native_RegVote(String:vote_name[], String:vote_fn_name[], Handle:vote_plugin);
 
@@ -87,7 +83,7 @@ stock bool:IsValidClient(client, bool:nobots = true){
 }
 
 stock InsGetTeamName(TEAM:team, String:team_n[], size){
-	if(team == INSURGENTS)		strcopy(team_n, size+1, "Insurgents");
+	if(team == INSURGENTS)		strcopy(team_n, size+1, "Insurgency");
 	else if(team == SECURITY)	strcopy(team_n, size+1, "Security");
 	else if(team == SPECTATORS)	strcopy(team_n, size+1, "Spectators");
 	else strcopy(team_n, size+1, "NONE");

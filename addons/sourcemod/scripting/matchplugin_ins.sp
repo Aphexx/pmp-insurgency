@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.6a",
+	version = "2.0.0",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -45,7 +45,6 @@ new Handle:g_maplist;
 
 new StringMap:g_cmds;		//"cmd_alias" -> "fn_name"
 new StringMap:g_cmds_fn;	//"fn_name" -> "plugin_handler"
-//new StringMap:g_cmds_help;	//"cmd" -> "help info"'
 new StringMap:g_votes;
 new StringMap:g_votes_fn;
 new Handle:g_voting_fn_plugin;
@@ -83,7 +82,6 @@ new const String:sig_WaitingForMatchStart_descr[] = "match start";
 
 public OnPluginStart(){
 	InitPlugin();
-	//MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
 }
 public OnPluginEnd(){
 	TeardownPlugin();
@@ -108,7 +106,6 @@ public OnClientPutInServer(client){
 }
 
 public OnClientDisconnect(client){
-	//if(!IsFakeClient(client))
 	if(!IsClientInGame(client))
 		return;
 	new TEAM:team = TEAM:GetClientTeam(client);
@@ -137,7 +134,8 @@ public TeardownPlugin(){
 
 
 public InitVars(){
-	g_maplist = CreateArray(32);
+	new Handle:ch = GetMyHandle();
+	g_maplist = CreateArray(48);
 	g_configs = new StringMap();
 
 	g_cmds = new StringMap();
@@ -145,7 +143,6 @@ public InitVars(){
 	g_votes = new StringMap();
 	g_votes_fn = new StringMap();
 
-	new Handle:ch = GetMyHandle();
 
 	MPINS_Native_RegCmd("help",				"cmd_fn_help", ch);
 	MPINS_Native_RegCmd("h",				"cmd_fn_help", ch);
@@ -345,8 +342,6 @@ public Action:Command_spectate(client, const char[] command, int argc){
 
 
 public Action:map_advance(){
-	//if(g_player_cnt > 0)
-	//	return;
 	new String:map[64];
 	new Handle:nextmap = FindConVar("nextlevel");
 	if(nextmap != INVALID_HANDLE){
@@ -572,8 +567,6 @@ public exec_config(String:cfgName[]){
 
 
 
-
-
 /*
  * FN
  */
@@ -788,8 +781,8 @@ public print_status(client){
 	}
 	if(g_teams_rdy[SECURITY])	CPrintToChat(client, "Security: {green}READY");
 	else				CPrintToChat(client, "Security: {red}NOT {default}READY");
-	if(g_teams_rdy[INSURGENTS])	CPrintToChat(client, "Insurgents: {green}READY");
-	else				CPrintToChat(client, "Insurgents: {red}NOT {default}READY");
+	if(g_teams_rdy[INSURGENTS])	CPrintToChat(client, "Insurgency: {green}READY");
+	else				CPrintToChat(client, "Insurgency: {red}NOT {default}READY");
 }
 
 
@@ -825,21 +818,6 @@ public player_welcome(client){
 	CPrintToChat(client, "[%s] Type {green}%s help {default} for command reference", CHAT_PFX, g_chat_command_prefix);
 	print_status(client);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1118,7 +1096,9 @@ public void VoteHandler_switch_teams(Menu menu,
 	}
 }
 
-
+/*
+ * Hack to pass VoteHandler to dynamic function in external plugin
+ */
 public void VoteHandler_Generic(Menu menu,
 								int num_votes,
 								int num_clients,
@@ -1138,9 +1118,7 @@ public void VoteHandler_Generic(Menu menu,
 		item_info_votes[i] = item_info[i][VOTEINFO_ITEM_VOTES];
 	}
 
-
 	new Function:vote_fn = GetFunctionByName(g_voting_fn_plugin, g_voting_fn_name);
-	//PrintToServer(">>>GENERIC: %d:%s", g_voting_fn_plugin, g_voting_fn_name);
 	Call_StartFunction(g_voting_fn_plugin, vote_fn);
 	Call_PushCell(menu);
 	Call_PushCell(num_votes);
@@ -1248,9 +1226,7 @@ SetIdlingHostname(){
 
 public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[], const String:rdy_descr[]){
 	new String:TeamName[32];
-	if(team == INSURGENTS)		strcopy(TeamName, sizeof(TeamName), "Insurgents");
-	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
-	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
+	InsGetTeamName(team, TeamName, sizeof(TeamName));
 
 	CPrintToChatAll("[%s] {green}%s {default}team ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = true;
@@ -1265,9 +1241,7 @@ public Action:MPINS_OnTeamReady(TEAM:team, const String:rdy_for[], const String:
 
 public Action:MPINS_OnTeamUnready(TEAM:team, const String:rdy_for[], const String:rdy_descr[]){
 	new String:TeamName[32];
-	if(team == INSURGENTS)		strcopy(TeamName, sizeof(TeamName), "Insurgents");
-	else if(team == SECURITY)	strcopy(TeamName, sizeof(TeamName), "Security");
-	else 					    strcopy(TeamName, sizeof(TeamName), "unknown");
+	InsGetTeamName(team, TeamName, sizeof(TeamName));
 
 	CPrintToChatAll("[%s] {green}%s team NOT ready for %s", CHAT_PFX, TeamName, rdy_descr);
 	g_teams_rdy[team] = false;
@@ -1301,10 +1275,10 @@ public Action:Timer_check_players(Handle:timer){
 	}
 
 	if(g_player_cnt < 2){  // Stop the match if only one player left
-		if(g_match_status != MPINS_MatchStatus:WAITING &&
-		   g_match_status != MPINS_MatchStatus:STOPING &&
-		   g_match_status != MPINS_MatchStatus:ENDED
-		   ){
+		if(!(g_match_status == MPINS_MatchStatus:WAITING ||
+			 g_match_status == MPINS_MatchStatus:STOPING ||
+			 g_match_status == MPINS_MatchStatus:ENDED
+			 )){
 			MPINS_Native_SetMatchStatus(STOPING);
 		}
 	}
@@ -1386,7 +1360,8 @@ public Action:start_stage_7(Handle:timer){
 	CVAR_sv_password.GetString(password, sizeof(password));
 
 	CPrintToChatAll("{green}%s","=>--!LIVE ON RESTART!--<=");
-	CPrintToChatAll("[%s] Password was set to: {green}%s", CHAT_PFX, password);
+	if(CVAR_matchplugin_generate_pw.BoolValue)
+		CPrintToChatAll("[%s] Password was set to: {green}%s", CHAT_PFX, password);
 	InsertServerCommand("mp_restartgame 1");
 	ServerExecute();
 	MPINS_Native_SetMatchStatus(LIVE_ON_RESTART);

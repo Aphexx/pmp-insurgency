@@ -5,7 +5,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Pause",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Pause for Insurgency Match Plugin",
-	version = "0.9.5",
+	version = "1.0.0",
 	url = "http://www.sourcemod.net/"
 };
 
