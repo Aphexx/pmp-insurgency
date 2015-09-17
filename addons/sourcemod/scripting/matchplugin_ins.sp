@@ -12,7 +12,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.0",
+	version = "2.0.1",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -56,7 +56,7 @@ new String:g_rdy_for[64];
 new String:g_rdy_descr[256];
 
 new StringMap:g_configs;
-new String:g_curcfg[64] = "default";
+new String:g_curcfg[32];
 new bool:g_SMC_configs_sec = false;
 
 new String:g_hostname[128];
@@ -67,17 +67,18 @@ new ConVar:CVAR_matchplugin_cmd_prefix;
 new ConVar:CVAR_matchplugin_welcome;
 new ConVar:CVAR_matchplugin_hostname_status;
 new ConVar:CVAR_matchplugin_hostname_showpw;
+new ConVar:CVAR_matchplugin_hostname_showcfg;
 new ConVar:CVAR_matchplugin_disable_kill_cmd;
 new ConVar:CVAR_matchplugin_forbid_team_change;
 new ConVar:CVAR_matchplugin_generate_pw;
 new ConVar:CVAR_matchplugin_vote_cooldown;
+new ConVar:CVAR_matchplugin_use_maplist;
 
 
 new const String:sig_WaitingForMatchStart[] = "match_start";
 new const String:sig_WaitingForMatchStart_descr[] = "match start";
 
-
-
+new const Float:Hibernation_enable_timeout = 15.0;
 
 
 public OnPluginStart(){
@@ -87,16 +88,17 @@ public OnPluginEnd(){
 	TeardownPlugin();
 }
 public OnMapStart(){
+	Set_sv_hibernate_when_empty(0);
 	CVAR_hostname.GetString(g_hostname, sizeof(g_hostname));
-	SetIdlingHostname(); // Dirtyfix of first-time server start while in hibernation
+	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
+	CreateTimer(Hibernation_enable_timeout, Timer_sv_hibernate_when_empty, 1);
 }
 public OnConfigsExecuted(){
 	new maplist_serial = -1;
 	ReadMapList(g_maplist, maplist_serial, "default", MAPLIST_FLAG_CLEARARRAY);
-	MPINS_Native_SetMatchStatus(MPINS_MatchStatus:WAITING);
-	CreateTimer(1.0, Timer_SetIdlingHostname); // Dirtyfix for server.cfg executed after this event fired
 	if(CVAR_matchplugin_disable_kill_cmd.BoolValue)
 		disable_kill_cmd();
+	on_match_waiting_post();
 }
 
 
@@ -117,13 +119,14 @@ public OnClientDisconnect(client){
 	CreateTimer(1.0, Timer_check_players);
 }
 public InitPlugin(){
+	Set_sv_hibernate_when_empty(0); // Hibernation breaks server initialization sequence
 	InitCVARs();
 	InitVars();
 	InitCMDs();
 	InitHooks();
-
 	load_config_file("configs/match_plugin.txt");
 	exec_config(g_curcfg);
+	CreateTimer(Hibernation_enable_timeout, Timer_sv_hibernate_when_empty, 1);
 }
 public TeardownPlugin(){
 	RemoveCVARs();
@@ -187,11 +190,12 @@ public InitCVARs(){
 	CVAR_matchplugin_welcome =					CreateConVar("sm_matchplugin_welcome",				"1",					"Enable player welcome message");
 	CVAR_matchplugin_hostname_status =			CreateConVar("sm_matchplugin_hostname_status",		"1",					"Enables displaying server status at hostname tail");
 	CVAR_matchplugin_hostname_showpw = 			CreateConVar("sm_matchplugin_hostname_showpw",		"1",					"Enables displaying default server password while match not running");
+	CVAR_matchplugin_hostname_showcfg = 		CreateConVar("sm_matchplugin_hostname_showcfg",		"1",					"Enables displaying current matchplugin config loaded");
 	CVAR_matchplugin_disable_kill_cmd =			CreateConVar("sm_matchplugin_disable_kill_cmd",		"1",					"Disable 'kill' cmd for players");
 	CVAR_matchplugin_forbid_team_change =		CreateConVar("sm_matchplugin_forbid_team_change",	"1",					"Forbid players from changing team while match is running");
 	CVAR_matchplugin_generate_pw = 				CreateConVar("sm_matchplugin_generate_pw",			"1",					"Randomly generate password on match start");
 	CVAR_matchplugin_vote_cooldown =			CreateConVar("sm_matchplugin_vote_cooldown",		"30",					"Cooldown in seconds between player votes");
-
+	CVAR_matchplugin_use_maplist = 				CreateConVar("sm_matchplugin_use_maplist",			"0",					"Only use maps from maplist");
 
 	CVAR_hostname = FindConVar("hostname");
 	CVAR_sv_password = FindConVar("sv_password");
@@ -297,6 +301,9 @@ public Action:GameEvents_player_team(Handle:event, const String:name[], bool:don
 	}
 	return Plugin_Continue;
 }
+
+
+
 public Action:Command_jointeam(client, const char[] command, int argc){
 	if(argc < 1)
 		return Plugin_Handled;
@@ -437,16 +444,19 @@ public on_match_waiting(){
 	InsertServerCommand("exec server.cfg");
 	ServerExecute();
 	exec_config(g_curcfg);
+	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
+	on_match_waiting_post();
+}
+public on_match_waiting_post(){
 	warmup_start();
 	SetIdlingHostname();
-	MPINS_Native_SetWaitForReadiness(sig_WaitingForMatchStart, sig_WaitingForMatchStart_descr);
 }
 
 public on_match_starting(){
 	g_team_player_limit[INSURGENTS] = g_team_player_cnt[INSURGENTS];
 	g_team_player_limit[SECURITY] = g_team_player_cnt[SECURITY];
 	warmup_end();
-	MPINS_Native_SetHostnamePostfix("LIVE");
+	UpdateHostnamePostfix("LIVE");
 	if(CVAR_matchplugin_generate_pw.BoolValue){
 		new String:passwd[5];
 		new passwd_r = GetRandomInt(1000, 9999);
@@ -553,11 +563,16 @@ public create_default_config_file(String:configFilePath[]){
 	CloseHandle(kv_configs);
 }
 
-public exec_config(String:cfgName[]){
+public exec_config(String:cfgName[32]){
+	if(StrEqual(cfgName, "")){
+		new StringMapSnapshot:keys = g_configs.Snapshot();
+		keys.GetKey(0, cfgName, sizeof(cfgName));
+	}
 	new String:cfgFile[127];
 	if(g_configs.GetString(cfgName, cfgFile, sizeof(cfgFile))){
 		InsertServerCommand("exec %s", cfgFile);
 		ServerExecute();
+		tag_append("pms");
 		return true;
 	}
 	return false;
@@ -604,20 +619,31 @@ public cmd_fn_changemap(client, ArrayList:m_args){
 	}
    	new String:s_map[32];
 	m_args.GetString(2, s_map, sizeof(s_map));
+	if(!CVAR_matchplugin_use_maplist.BoolValue){
+		changemap(s_map);
+		return;
+	}
 	new map_cnt = GetArraySize(g_maplist);
 	decl String:c_map[32];
 	for (new i = 0; i < map_cnt; i++){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
 		if(StrEqual(c_map, s_map, false)){
-			InsertServerCommand("sm_nextmap \"%s\"", s_map);
-			InsertServerCommand("nextlevel \"%s\"", s_map);
-			InsertServerCommand("sm_map \"%s\"", s_map); //FIXME: timeout
-			ServerExecute();
+			changemap(s_map);
 			return;
 		}
 	}
 	PrintToChat(client, "[%s] Map '%s' not found", CHAT_PFX, s_map);
 }
+
+changemap(String:map[]){
+	if(!IsMapValid(map))
+	    return;
+	InsertServerCommand("sm_nextmap \"%s\"", map);
+	InsertServerCommand("nextlevel \"%s\"", map);
+	InsertServerCommand("sm_map \"%s\"", map);
+	ServerExecute();
+}
+
 
 public cmd_fn_nextmap(client, ArrayList:m_args){
 	if(m_args.Length < 3){
@@ -626,19 +652,26 @@ public cmd_fn_nextmap(client, ArrayList:m_args){
 	}
 	new String:s_map[32];
 	m_args.GetString(2, s_map, sizeof(s_map));
+	if(!CVAR_matchplugin_use_maplist.BoolValue){
+		fn_nextmap(s_map);
+		return;
+	}
 	new map_cnt = GetArraySize(g_maplist);
 	decl String:c_map[32];
 	for (new i = 0; i < map_cnt; i++){
 		GetArrayString(g_maplist, i, c_map, sizeof(c_map));
 		if(StrEqual(c_map, s_map, false)){
 			PrintToChatAll("[%s] Nextmap changed to %s", CHAT_PFX,	s_map);
-			InsertServerCommand("sm_nextmap \"%s\"", s_map);
-			InsertServerCommand("nextlevel \"%s\"", s_map);
-			ServerExecute();
+			fn_nextmap(s_map);
 			return;
 		}
 	}
 	PrintToChat(client, "[%s] Map '%s' not found", CHAT_PFX,  s_map);
+}
+fn_nextmap(String:map[]){
+	InsertServerCommand("sm_nextmap \"%s\"", map);
+	InsertServerCommand("nextlevel \"%s\"", map);
+	ServerExecute();
 }
 
 public cmd_fn_restartround(client, ArrayList:m_args){
@@ -1219,7 +1252,7 @@ SetIdlingHostname(){
 		return;
 	decl String:buf_h[128];
 	Format(buf_h, sizeof(buf_h), "pw: %s", password);
-	MPINS_Native_SetHostnamePostfix(buf_h);
+	UpdateHostnamePostfix(buf_h);
 }
 
 
@@ -1258,7 +1291,15 @@ public Action:MPINS_OnAllTeamsReady(const String:rdy_for[], const String:rdy_des
 	return Plugin_Continue;
 }
 
-
+public UpdateHostnamePostfix(String:status[]){
+	decl String:buf[64];
+	if(CVAR_matchplugin_hostname_showcfg.BoolValue){
+		Format(buf, sizeof(buf), "%s | %s", g_curcfg, status);
+	}else{
+		Format(buf, sizeof(buf), "%s",  status);
+	}
+	MPINS_Native_SetHostnamePostfix(buf);
+}
 
 public Action:Timer_check_players(Handle:timer){
 	for(new TEAM:team; team<TEAM;team++){
@@ -1283,9 +1324,17 @@ public Action:Timer_check_players(Handle:timer){
 		}
 	}
 }
-public Action:Timer_SetIdlingHostname(Handle:timer){
-	SetIdlingHostname();
+
+
+Set_sv_hibernate_when_empty(val){
+	ServerCommand("sv_hibernate_when_empty %d", val);
+	ServerExecute();
 }
+
+public Action:Timer_sv_hibernate_when_empty(Handle:timer, val){
+	Set_sv_hibernate_when_empty(val);
+}
+
 
 
 

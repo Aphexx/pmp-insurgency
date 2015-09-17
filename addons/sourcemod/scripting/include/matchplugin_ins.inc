@@ -1,5 +1,5 @@
 #include <sourcemod>
-
+#include <regex>
 
 #if defined _matchplugin_ins_included
  #endinput
@@ -90,4 +90,19 @@ stock InsGetTeamName(TEAM:team, String:team_n[], size){
 }
 stock bool:IsGenericAdmin(client){
 	return GetAdminFlag(GetUserAdmin(client), Admin_Generic);
+}
+
+stock tag_append(const String:tag[]){
+	new ConVar:sv_tags = FindConVar("sv_tags");
+	new String:rpatt[32];
+	decl String:tags[400];
+	decl String:newTags[400];
+	new Regex:rtag;
+	Format(rpatt, sizeof(rpatt), "(^|,)%s(,|$)", tag);
+	rtag = new Regex(rpatt, PCRE_CASELESS);
+	sv_tags.GetString(tags, sizeof(tags));
+	if(!rtag.Match(tags)){
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		sv_tags.SetString(newTags);
+	}
 }
