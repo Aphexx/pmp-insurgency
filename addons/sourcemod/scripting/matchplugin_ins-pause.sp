@@ -41,10 +41,10 @@ new const g_timer_force_unpause = 30;
 
 
 public void OnPluginStart(){
-	CVAR_matchplugin_disconnect_autopause = CreateConVar("sm_matchplugin_disconnect_autopause",		"1",	"If enabled, game will be autopaused when players disconnects from server during the match");
+	CVAR_matchplugin_disconnect_autopause = CreateConVar("sm_matchplugin_disconnect_autopause",		"0",	"If enabled, game will be autopaused when players disconnects from server during the match");
 	CVAR_matchplugin_pause_team_limit = 	CreateConVar("sm_matchplugin_pause_team_limit",			"-1",	"Pause limit per team; -1 for no limit");
 	CVAR_matchplugin_pause_time_limit = 	CreateConVar("sm_matchplugin_pause_time_limit",			"-1",	"Pause time limit in seconds after what game will be automaticly unpaused; -1 for no limit");
-	CVAR_matchplugin_pause_delay_nextround =CreateConVar("sm_matchplugin_pause_delay_nextround",	"0",	"Disallow ingame pause and delay all pauses till next round start");
+	CVAR_matchplugin_pause_delay_nextround =CreateConVar("sm_matchplugin_pause_delay_nextround",	"1",	"Disallow ingame pause and delay all pauses till next round start");
 	CVAR_sv_pausable = FindConVar("sv_pausable");
 	AutoExecConfig(true);
 
