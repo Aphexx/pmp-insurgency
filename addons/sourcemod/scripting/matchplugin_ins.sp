@@ -8,11 +8,12 @@
 
 #include <matchplugin_ins>
 
+
 public Plugin:myinfo ={
 	name = "Match Plugin Insurgency",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Match Server Plugin for Insurgency",
-	version = "2.0.1",
+	version = "2.0.2",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -1357,7 +1358,7 @@ DumpClientsToChat(){
 				continue;
 			GetClientAuthId(i, AuthId_Engine, AuthID, sizeof(AuthID));
 			ReplaceString(AuthID, sizeof(AuthID), "STEAM_", "");
-			CPrintToChatAll("{green}       %N <%s>", i, AuthID);
+			CPrintToChatAll("{green}       %N {default}<%s>", i, AuthID);
 		}
 	}
 }
