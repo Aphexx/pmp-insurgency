@@ -5,7 +5,7 @@ public Plugin:myinfo ={
 	name = "Match Plugin Pause",
 	author = "Aphex <steamfor@gmail.com>",
 	description = "Pause for Insurgency Match Plugin",
-	version = "1.0.0",
+	version = "1.0.1",
 	url = "http://www.sourcemod.net/"
 };
 
@@ -63,6 +63,8 @@ public void OnAllPluginsLoaded(){
 	MPINS_Native_RegCmd("unpause",			"cmd_fn_pause_unpause", ch);
 	MPINS_Native_RegCmd("cp",				"cmd_fn_pause_cancel", ch);
 	MPINS_Native_RegCmd("cancelpause",	   	"cmd_fn_pause_cancel", ch);
+	MPINS_Native_RegCmd("ps",				"cmd_fn_pause_status", ch);
+	MPINS_Native_RegCmd("pausestatus",		"cmd_fn_pause_status", ch);
 }
 
 public OnClientDisconnect(client){
@@ -159,6 +161,8 @@ public Action:GameEvents_RoundEnd(Handle:event, const String:name[], bool:dontBr
 public MPINS_OnHelpCalled(client){
 	PrintToConsole(client, " p               Pause game");
 	PrintToConsole(client, " up              Unpause game");
+	PrintToConsole(client, " cp              Cancel pause request");
+	PrintToConsole(client, " ps              Show pause state");
 }
 public Action:MPINS_OnMatchStatusChange(MPINS_MatchStatus:old_status, &MPINS_MatchStatus:new_status){
 	if(new_status == MPINS_MatchStatus:LIVE){
@@ -209,14 +213,15 @@ public pause_OnUnpause(){
 
 
 
-
-
-
 public cmd_fn_pause_pause(client, ArrayList:m_args){
 	new TEAM:team = TEAM:GetClientTeam(client);
 	if(!check_pause_request(client, team))
 		return;
 	if(CVAR_matchplugin_pause_delay_nextround.BoolValue){
+		if(GameRules_GetGameState() == 3){ // PREROUND FIXME
+			pause_request(client);
+			return;
+		}
 		if(!g_team_pause_req[team]){
 			CPrintToChatAll("[%s] {green}%N {default}requested a pause for next round", CHAT_PFX, client);
 			g_team_pause_req[team] = true;
@@ -258,6 +263,31 @@ public cmd_fn_pause_cancel(client, ArrayList:m_args){
 }
 
 
+
+public cmd_fn_pause_status(client, ArrayList:m_args){
+	decl String:team_n[32];
+	for(new TEAM:team; team < TEAM;team++){
+		if(!(team == SECURITY || team == INSURGENTS)) continue;
+		InsGetTeamName(team, team_n, sizeof(team_n));
+		if(g_team_limits[team] >= 0){
+			CPrintToChat(client, "[%s] %s team has {green}%d/%d {default}pauses left",
+						 CHAT_PFX, team_n, g_team_limits[team], CVAR_matchplugin_pause_team_limit.IntValue);
+		}
+		if(g_time_limits[team] >= 0){
+			CPrintToChat(client, "[%s] %s team can pause the game for {green}%d {default}more seconds",
+						 CHAT_PFX, team_n, g_time_limits[team]);
+		}
+	}
+	if(g_paused != PAUSE_STATE:NOT_PAUSED){
+		decl String:pauser_team_n[32];
+		InsGetTeamName(g_pauser, pauser_team_n, sizeof(pauser_team_n));
+		CPrintToChat(client, "[%s] Game was paused by the {green}%s team",
+					 CHAT_PFX, pauser_team_n);
+	}else{
+		CPrintToChat(client, "[%s] Game is not paused",
+					 CHAT_PFX);
+	}
+}
 
 
 
@@ -330,14 +360,14 @@ pause_request(client=0, TEAM:team=TEAM:NONE){
 	if(!check_pause_request(client, team))
 		return;
 	if(client)	CPrintToChatAll("[%s] {green}%N {default} requested a game pause", CHAT_PFX, client);
-	else		CPrintToChatAll("[%s] {green}%s {default} team requested a game pause.", CHAT_PFX, team_n);
+	else		CPrintToChatAll("[%s] {green}%s {default}team requested a game pause.", CHAT_PFX, team_n);
 	if(g_team_limits[team] > 0)
-		CPrintToChatAll("[%s] {green}%s {default} can pause the game {green}%d/%d {default}more times",
+		CPrintToChatAll("[%s] {green}%s {default}team can pause the game {green}%d/%d {default}more times",
 						CHAT_PFX, team_n, g_team_limits[team], CVAR_matchplugin_pause_team_limit.IntValue);
 	if(g_team_limits[team] > 0)
 		g_team_limits[team]--;
 	if(g_time_limits[team] > 0){
-		CPrintToChatAll("[%s] {green}%s {default} can pause the game for {green}%d {default}more seconds",
+		CPrintToChatAll("[%s] {green}%s {default}team can pause the game for {green}%d {default}more seconds",
 						CHAT_PFX, team_n, g_time_limits[team], CVAR_matchplugin_pause_time_limit.IntValue);
 		pause(team);
 		CreateTimer(1.0, Timer_Unpause, 0);

@@ -1,5 +1,6 @@
 #include <sourcemod>
 #include <regex>
+#include <sdktools_gamerules>
 
 #if defined _matchplugin_ins_included
  #endinput
@@ -105,4 +106,9 @@ stock tag_append(const String:tag[]){
 		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
 		sv_tags.SetString(newTags);
 	}
+}
+
+
+stock GameRules_GetGameState(){
+    return GameRules_GetProp("m_iGameState");
 }
